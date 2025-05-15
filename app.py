@@ -5,7 +5,7 @@ import os
 
 st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘‍♂️")
 
-COHERE_API_KEY = os.getenv("COHERE_API_KEY")
+COHERE_API_KEY = os.getenv("hTRHKEoz2gRAe68ILa7SqCq6T82lZn1muCV619EX")
 co = cohere.Client(COHERE_API_KEY)
 
 st.title("🧘‍♂️ Registro de Conciencia")
