@@ -1,22 +1,57 @@
-# 🧘‍♂️ Registro de Conciencia
+# 🧘 Registro de Conciencia
 
-Esta es una aplicación de reflexión personal guiada por IA, desarrollada con Streamlit y Cohere.
+**Una app web sencilla y poderosa para fomentar la autoobservación diaria y generar reflexiones personalizadas con IA.**
 
-## 🧪 Tecnologías usadas
-- Streamlit
-- Cohere API
+[🔗 Probar la App](https://registro-conciencia-8w2acvotg4ehdnvtdpjghe.streamlit.app)
 
-## 🚀 Cómo desplegar en Streamlit Cloud
+---
 
-1. Sube este repositorio a tu cuenta de GitHub.
-2. Entra a [streamlit.io/cloud](https://streamlit.io/cloud) e inicia sesión con GitHub.
-3. Crea una nueva app seleccionando este repositorio.
-4. En la sección "Secrets", añade tu API Key de Cohere:
-   ```
-   COHERE_API_KEY = "tu_clave"
-   ```
-5. Haz clic en "Deploy" y accede a tu app desde cualquier lugar.
+## ✨ ¿Qué es Registro de Conciencia?
 
-## ✨ Resultado esperado
+**Registro de Conciencia** es una aplicación diseñada para ayudarte a pausar, reflexionar y reconectar contigo mismo. A través de unas preguntas clave sobre tu estado emocional, pensamientos y aspiraciones, la app genera automáticamente una reflexión personalizada con inteligencia artificial (Cohere).
 
-La app te hará 4 preguntas diarias y generará una reflexión motivadora basada en tus respuestas.
+> Ideal para quienes practican mindfulness, journaling, coaching personal o simplemente desean tener un espacio diario de conexión interior.
+
+---
+
+## 🌟 Características
+
+- 🧘‍♂️ Interfaz amigable y minimalista
+- 🤖 Generación automática de reflexiones con IA (Cohere)
+- ✅ Almacenamiento local de entradas para revisión personal
+- 🌐 Accesible desde cualquier dispositivo
+- 📅 Ideal para crear hábitos diarios de autoevaluación
+
+---
+
+## 🛠️ Tecnologías utilizadas
+
+- [Streamlit](https://streamlit.io/) - Framework para apps web rápidas en Python
+- [Cohere API](https://cohere.com/) - Generación de lenguaje natural
+- Python 3.12
+
+---
+
+## 🚀 ¿Cómo usar?
+
+1. Abre la app desde el siguiente enlace:  
+   👉 [https://registro-conciencia-8w2acvotg4ehdnvtdpjghe.streamlit.app](https://registro-conciencia-8w2acvotg4ehdnvtdpjghe.streamlit.app)
+
+2. Responde las siguientes preguntas:
+   - ¿Cómo te sientes hoy?
+   - ¿Qué ha estado ocupando tus pensamientos últimamente?
+   - ¿Qué agradeces hoy?
+   - ¿Qué te gustaría lograr o mejorar?
+
+3. Haz clic en **Guardar y reflexionar**
+4. La IA generará una reflexión profunda basada en tus respuestas.
+
+---
+
+## 📦 ¿Cómo correr localmente?
+
+```bash
+git clone https://github.com/germ4n1101/registro-conciencia.git
+cd registro-conciencia
+pip install -r requirements.txt
+streamlit run app.py
