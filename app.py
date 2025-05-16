@@ -1,115 +1,89 @@
 import streamlit as st
-import yaml
+import json
 import os
 
-USERS_FILE = "usuarios.yaml"
+USERS_FILE = "usuarios.json"
 ADMIN_EMAIL = "admin@admin.com"
+ADMIN_PASSWORD = "admin"
 
-# ------------------------
-# Funciones de autenticación
-# ------------------------
-
+# Función para cargar usuarios
 def cargar_usuarios():
-    if not os.path.exists(USERS_FILE):
-        return {}
-    try:
-        with open(USERS_FILE, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-            return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            return json.load(f)
+    return {}
 
+# Función para guardar usuarios
 def guardar_usuarios(usuarios):
-    with open(USERS_FILE, "w", encoding="utf-8") as f:
-        yaml.safe_dump(usuarios, f)
+    with open(USERS_FILE, "w") as f:
+        json.dump(usuarios, f)
 
-def login(email, password):
+# Interfaz principal
+def main():
+    st.title("🔐 Inicia sesión o regístrate")
+
     usuarios = cargar_usuarios()
-    return usuarios.get(email) == password
-
-def registrar(email, password):
-    usuarios = cargar_usuarios()
-    if not isinstance(usuarios, dict):
-        usuarios = {}
-    if email in usuarios:
-        return False
-    usuarios[email] = password
-    guardar_usuarios(usuarios)
-    return True
-
-def cambiar_contraseña(email, nueva_contra):
-    usuarios = cargar_usuarios()
-    if email not in usuarios:
-        return False
-    usuarios[email] = nueva_contra
-    guardar_usuarios(usuarios)
-    return True
-
-# ------------------------
-# Interfaz Streamlit
-# ------------------------
-
-st.set_page_config(page_title="Registro Conciencia", page_icon="🔐")
-
-if "autenticado" not in st.session_state:
-    st.session_state.autenticado = False
-if "email" not in st.session_state:
-    st.session_state.email = ""
-
-st.title("🔐 Inicia sesión o regístrate")
-
-tabs = st.tabs(["Iniciar Sesión", "Registrarse"])
-
-# ---------------- TAB LOGIN ----------------
-with tabs[0]:
-    login_email = st.text_input("Correo electrónico", key="login_email")
-    login_password = st.text_input("Contraseña", type="password", key="login_password")
-    if st.button("Iniciar sesión"):
-        if login(login_email, login_password):
-            st.session_state.autenticado = True
-            st.session_state.email = login_email
-            st.rerun()
-            
-        else:
-            st.error("❌ Credenciales inválidas.")
-
-# ---------------- TAB REGISTRO ----------------
-with tabs[1]:
-    new_email = st.text_input("Correo electrónico", key="reg_email")
-    new_password = st.text_input("Contraseña", type="password", key="reg_password")
-    if st.button("Registrarse"):
-        if registrar(new_email, new_password):
-            st.success("✅ Registro exitoso. Ahora puedes iniciar sesión.")
-        else:
-            st.error("❌ El correo ya está registrado.")
-
-# ---------------- SESIÓN ACTIVA ----------------
-if st.session_state.autenticado:
-    st.success(f"Sesión iniciada como: {st.session_state.email}")
     
-    st.markdown("### ⚙️ Opciones de cuenta")
+    if "sesion_iniciada" not in st.session_state:
+        st.session_state.sesion_iniciada = False
+        st.session_state.usuario_actual = None
 
-    # ---- CAMBIAR CONTRASEÑA ----
-    with st.expander("🔒 Cambiar contraseña"):
-        nueva_contraseña = st.text_input("Nueva contraseña", type="password")
-        if st.button("Actualizar contraseña"):
-            if cambiar_contraseña(st.session_state.email, nueva_contraseña):
-                st.success("Contraseña actualizada exitosamente.")
+    tabs = st.tabs(["Iniciar Sesión", "Registrarse"])
+
+    with tabs[0]:
+        email = st.text_input("Correo electrónico", key="login_email")
+        password = st.text_input("Contraseña", type="password", key="login_password")
+
+        if st.button("Iniciar sesión"):
+            if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
+                st.session_state.sesion_iniciada = True
+                st.session_state.usuario_actual = "admin"
+                st.success("Sesión iniciada como administrador.")
+                st.rerun()
+            elif email in usuarios and usuarios[email] == password:
+                st.session_state.sesion_iniciada = True
+                st.session_state.usuario_actual = email
+                st.success("Sesión iniciada con éxito.")
+                st.rerun()
             else:
-                st.error("No se pudo actualizar la contraseña.")
+                st.error("❌ Credenciales inválidas.")
 
-    # ---- MODO ADMIN ----
-    if st.session_state.email == ADMIN_EMAIL:
-        with st.expander("👥 Ver todos los usuarios registrados (Admin)"):
-            usuarios = cargar_usuarios()
-            for user, pwd in usuarios.items():
-                st.write(f"📧 {user}")
+    with tabs[1]:
+        new_email = st.text_input("Correo electrónico", key="register_email")
+        new_password = st.text_input("Contraseña", type="password", key="register_password")
 
-    # ---- CERRAR SESIÓN ----
-    if st.button("Cerrar sesión"):
-    st.session_state.usuario_autenticado = None
-    st.success("Sesión cerrada.")
-    st.rerun()
+        if st.button("Registrarse"):
+            if new_email in usuarios:
+                st.warning("⚠️ Este correo ya está registrado.")
+            else:
+                usuarios[new_email] = new_password
+                guardar_usuarios(usuarios)
+                st.success("Usuario registrado con éxito. Ahora puedes iniciar sesión.")
+                st.rerun()
 
-    # Aquí va tu contenido principal
-    st.write("🎯 Contenido principal de tu app...")
+    # Vista para usuarios logueados
+    if st.session_state.sesion_iniciada:
+        st.divider()
+        st.write(f"👋 Bienvenido **{st.session_state.usuario_actual}**")
+
+        if st.session_state.usuario_actual == "admin":
+            st.subheader("👥 Usuarios registrados")
+            for correo in usuarios:
+                st.write(f"📧 {correo}")
+        else:
+            st.subheader("🔑 Cambiar contraseña")
+            nueva_pass = st.text_input("Nueva contraseña", type="password")
+            if st.button("Actualizar contraseña"):
+                usuarios[st.session_state.usuario_actual] = nueva_pass
+                guardar_usuarios(usuarios)
+                st.success("Contraseña actualizada.")
+
+        if st.button("Cerrar sesión"):
+            st.session_state.sesion_iniciada = False
+            st.session_state.usuario_actual = None
+            st.success("Sesión cerrada.")
+            st.rerun()
+
+if __name__ == "__main__":
+    main()
+
