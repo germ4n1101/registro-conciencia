@@ -102,7 +102,7 @@ if not st.session_state.usuario_autenticado:
                 st.session_state.usuario_autenticado = new_email
                 st.session_state.login_exitoso = True
                 st.success("✅ Usuario registrado exitosamente.")
-                st.experimental_rerun()
+                st.rerun()
 
 # --- Interfaz Principal Post Login ---
 else:
