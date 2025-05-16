@@ -1,1 +1,1 @@
-
+st.write("Usuarios cargados:", cargar_usuarios())
