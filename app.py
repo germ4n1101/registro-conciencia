@@ -5,7 +5,7 @@ import cohere
 from datetime import datetime
 
 # Leer la clave API de Cohere desde secrets.toml
-COHERE_API_KEY = st.secrets["COHERE_API_KEY"]
+COHERE_API_KEY = st.secrets["hTRHKEoz2gRAe68ILa7SqCq6T82lZn1muCV619EX"]
 cohere_client = cohere.Client(COHERE_API_KEY)
 
 USERS_FILE = "usuarios.yaml"
