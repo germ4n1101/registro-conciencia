@@ -114,7 +114,7 @@ def main_app():
 
     if st.button("Guardar y reflexionar"):
         texto = f"Hoy me siento {estado}. He estado pensando en {pensamiento}. Agradezco {gratitud}. Me gustaría lograr {meta}."
-        )
+        
 
         prompt = (
             "Actúa como una mente sabia y reflexiva que guía con compasión. "
