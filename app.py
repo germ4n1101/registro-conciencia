@@ -73,7 +73,7 @@ if st.button("Guardar y reflexionar"):
                 f"Por favor genera una reflexión amable, positiva y consciente basada en esta información."
             )
 
-            respuesta = cohere.chat(
+            respuesta = cohere_client.chat(
                 model="command-nightly",
                 message=prompt_ia
             )
