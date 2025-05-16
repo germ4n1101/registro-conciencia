@@ -128,26 +128,28 @@ def main_app():
 
 # Control principal
 def main():
-    st.sidebar.title("Navegación")
-    options = ["Iniciar sesión", "Registrarse", "Recuperar contraseña", "Preguntas para estado"]
-    choice = st.sidebar.radio("Seleccione una opción", options)
-
     if 'logged_in' not in st.session_state:
         st.session_state['logged_in'] = False
 
-    if choice == "Iniciar sesión":
-        if not st.session_state['logged_in']:
-            login()
-        else:
-            main_app()
-    elif choice == "Registrarse":
-        register()
-    elif choice == "Recuperar contraseña":
-        recover_password()
-    elif choice == "preguntas para estado":
-        main_app()
+    if not st.session_state['logged_in']:
+        st.sidebar.title("Bienvenido")
+        options = ["Iniciar sesión", "Registrarse", "Recuperar contraseña"]
+        choice = st.sidebar.radio("Seleccione una opción", options)
 
-if __name__ == "__main__":
-    main()
+        if choice == "Iniciar sesión":
+            login()
+        elif choice == "Registrarse":
+            register()
+        elif choice == "Recuperar contraseña":
+            recover_password()
+    else:
+        st.sidebar.title("Menú")
+        choice = st.sidebar.radio("Seleccione una opción", ["Registro diario", "Cerrar sesión"])
+
+        if choice == "Registro diario":
+            main_app()
+        elif choice == "Cerrar sesión":
+            st.session_state['logged_in'] = False
+            st.success("Sesión cerrada con éxito. Puedes iniciar sesión nuevamente.")
 
 
