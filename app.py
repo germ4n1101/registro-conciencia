@@ -153,4 +153,4 @@ with st.expander("📜 Ver mis reflexiones pasadas"):
 if st.button("Cerrar sesión"):
     st.session_state.usuario_autenticado = None
     st.success("Sesión cerrada.")
-    st.experimental_rerun()
+    st.rerun()
