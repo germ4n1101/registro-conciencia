@@ -55,6 +55,16 @@ def generar_reflexion(prompt):
     except Exception as e:
         return f"⚠️ Error al generar reflexión: {e}"
 
+def obtener_registros(email):
+    if not isinstance(email, str) or not email.strip():
+        return "⚠️ No se pudo cargar el historial: correo no válido."
+
+    filename = os.path.join(REGISTROS_DIR, f"{email.replace('@', '_')}.txt")
+    if not os.path.exists(filename):
+        return "No tienes registros previos."
+    with open(filename, "r", encoding="utf-8") as f:
+        return f.read()
+
 # --- Redirección después de login/registro ---
 if "login_exitoso" in st.session_state and st.session_state.login_exitoso:
     st.session_state.login_exitoso = False
