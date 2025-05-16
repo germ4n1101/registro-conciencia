@@ -1,113 +1,136 @@
 import streamlit as st
 import yaml
 import os
+import hashlib
 import cohere
 from datetime import datetime
-from yaml.loader import SafeLoader
 
-# Leer usuarios
+# ------------------ CONFIGURACION INICIAL ------------------
+st.set_page_config(page_title="Registro de Conciencia", layout="centered")
+
+# Obtener clave de Cohere desde secrets
+try:
+    cohere_api_key = st.secrets["cohere"]["api_key"]
+    cohere_client = cohere.Client(cohere_api_key)
+except KeyError:
+    st.error("❌ No se encontró la clave API de Cohere en .streamlit/secrets.toml.")
+    st.stop()
+
+USERS_FILE = "usuarios.yaml"
+
 def load_users():
-    if os.path.exists("usuarios.yaml"):
-        with open("usuarios.yaml", "r") as file:
-            return yaml.load(file, Loader=SafeLoader) or {"usuarios": []}
-    return {"usuarios": []}
+    if not os.path.exists(USERS_FILE):
+        with open(USERS_FILE, 'w') as f:
+            yaml.dump({"usuarios": []}, f)
+    with open(USERS_FILE, 'r') as f:
+        return yaml.safe_load(f)
 
-# Guardar usuarios
 def save_users(data):
-    with open("usuarios.yaml", "w") as file:
-        yaml.dump(data, file)
+    with open(USERS_FILE, 'w') as f:
+        yaml.dump(data, f)
 
-# Registrar usuario
-def register_user():
-    st.subheader("Crear una cuenta nueva")
-    new_username = st.text_input("Nombre de usuario")
-    new_email = st.text_input("Correo electrónico")
-    new_password = st.text_input("Contraseña", type="password")
-    if st.button("Registrarme"):
-        data = load_users()
-        if any(u['username'] == new_username for u in data['usuarios']):
-            st.warning("Este usuario ya existe.")
-        else:
-            data['usuarios'].append({
-                'username': new_username,
-                'email': new_email,
-                'password': new_password
-            })
-            save_users(data)
-            st.success("Registro exitoso. Ya puedes iniciar sesión.")
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-# Recuperación de contraseña
-def recover_password():
-    st.subheader("Recuperar contraseña")
-    email = st.text_input("Ingresa tu correo electrónico")
-    if st.button("Recuperar"):
-        data = load_users()
-        user = next((u for u in data['usuarios'] if u['email'] == email), None)
-        if user:
-            st.info(f"Tu nombre de usuario es '{user['username']}' y tu contraseña es '{user['password']}'")
-        else:
-            st.warning("No se encontró un usuario con ese correo.")
-
-# Login
+# ------------------ AUTENTICACION ------------------
 def login():
-    st.subheader("Iniciar sesión")
+    st.subheader("🔐 Iniciar sesión")
     username = st.text_input("Usuario")
     password = st.text_input("Contraseña", type="password")
-    if st.button("Ingresar"):
+    if st.button("Iniciar sesión"):
         data = load_users()
-        user = next((u for u in data['usuarios'] if u['username'] == username and u['password'] == password), None)
-        if user:
-            st.session_state["authenticated"] = True
-            st.session_state["user"] = username
-            st.success("Inicio de sesión exitoso.")
+        for user in data['usuarios']:
+            if user['username'] == username and user['password'] == hash_password(password):
+                st.session_state.usuario = user
+                return True
+        st.error("Credenciales inválidas")
+    return False
+
+def register():
+    st.subheader("📝 Registro")
+    name = st.text_input("Nombre completo")
+    username = st.text_input("Usuario nuevo")
+    email = st.text_input("Correo electrónico")
+    password = st.text_input("Contraseña nueva", type="password")
+    if st.button("Registrar"):
+        data = load_users()
+        if any(u['username'] == username for u in data['usuarios']):
+            st.error("Este usuario ya existe")
         else:
-            st.error("Usuario o contraseña incorrectos.")
+            data['usuarios'].append({
+                "name": name,
+                "username": username,
+                "email": email,
+                "password": hash_password(password)
+            })
+            save_users(data)
+            st.success("Usuario registrado correctamente. Ahora puedes iniciar sesión.")
 
-# Área principal con Cohere
-@st.cache_resource
-def load_cohere():
-    api_key = st.secrets["cohere"]["api_key"]
-    return cohere.Client(api_key)
+# ------------------ RECUPERAR CLAVE (simulada) ------------------
+def recuperar():
+    st.subheader("🔑 Recuperar contraseña")
+    email = st.text_input("Ingresa tu correo registrado")
+    if st.button("Recuperar"):
+        data = load_users()
+        for u in data['usuarios']:
+            if u['email'] == email:
+                st.info("Se enviaría un recordatorio al correo: {} (función simulada)".format(email))
+                return
+        st.warning("Correo no encontrado")
 
-cohere_client = load_cohere()
+# ------------------ REFLEXIÓN CON COHERE ------------------
+def generar_reflexion(prompt):
+    if not prompt.strip():
+        return "No se puede generar una reflexión sin contenido."
+    try:
+        response = cohere_client.generate(
+            model="command",
+            prompt=prompt,
+            max_tokens=100,
+            temperature=0.7
+        )
+        return response.generations[0].text.strip()
+    except cohere.CohereError as e:
+        st.error(f"❌ Error al generar reflexión: {str(e)}")
+        return "Ocurrió un error al generar la reflexión con la IA."
 
+# ------------------ PANTALLA PRINCIPAL ------------------
 def main_app():
     st.title("🧘 Registro de Conciencia")
-    st.write("Responde las siguientes preguntas para registrar tu estado y generar una reflexión.")
+    st.markdown("Responde las siguientes preguntas para registrar tu estado y generar una reflexión.")
 
-    q1 = st.text_input("¿Cómo te sientes hoy?")
-    q2 = st.text_input("¿Qué ha estado ocupando tus pensamientos últimamente?")
-    q3 = st.text_input("¿Qué agradeces hoy?")
-    q4 = st.text_input("¿Qué te gustaría lograr o mejorar?")
+    sentimiento = st.text_input("¿Cómo te sientes hoy?")
+    pensamientos = st.text_input("¿Qué ha estado ocupando tus pensamientos últimamente?")
+    agradecimiento = st.text_input("¿Qué agradeces hoy?")
+    meta = st.text_input("¿Qué te gustaría lograr o mejorar?")
 
     if st.button("Guardar y reflexionar"):
-        texto = f"Hoy me siento: {q1}. Últimamente pienso en: {q2}. Agradezco: {q3}. Deseo mejorar o lograr: {q4}."
-        response = cohere_client.generate(
-            model='command-r',
-            prompt=f"Reflexiona sobre este registro personal: {texto}",
-            max_tokens=100
-        )
-        st.success("✅ Entrada guardada y analizada por la IA.")
-        st.info(response.generations[0].text)
+        prompt = f"""
+        ¿Cómo te sientes hoy?: {sentimiento}
+        ¿Qué ha estado ocupando tus pensamientos?: {pensamientos}
+        ¿Qué agradeces hoy?: {agradecimiento}
+        ¿Qué te gustaría lograr?: {meta}
+        """
+        reflexion = generar_reflexion(prompt)
+        st.success("Entrada guardada y analizada por la IA.")
+        st.markdown("### 🤖 Reflexión generada:")
+        st.info(reflexion)
 
-# Control de flujo
-st.sidebar.title("Menú")
-menu = st.sidebar.selectbox("Opciones", ["Login", "Registro", "Recuperar clave", "App"])
+# ------------------ NAVEGACION ------------------
+def main():
+    menu = ["Iniciar sesión", "Registrarse", "Recuperar contraseña"]
+    choice = st.sidebar.selectbox("Navegación", menu)
 
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
+    if choice == "Iniciar sesión":
+        if "usuario" in st.session_state:
+            main_app()
+        elif login():
+            st.experimental_rerun()
+    elif choice == "Registrarse":
+        register()
+    elif choice == "Recuperar contraseña":
+        recuperar()
 
-if menu == "Login":
-    login()
+if __name__ == "__main__":
+    main()
 
-elif menu == "Registro":
-    register_user()
-
-elif menu == "Recuperar clave":
-    recover_password()
-
-elif menu == "App":
-    if st.session_state["authenticated"]:
-        main_app()
-    else:
-        st.warning("Por favor, inicia sesión primero.")
