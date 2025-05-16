@@ -31,6 +31,8 @@ def generar_reflexion(prompt):
         st.error(f"❌ Error al generar reflexión: {str(e)}")
         return "Ocurrió un error al generar la reflexión con la IA."
 
+response = cohere_client.generate(...)
+
 USERS_FILE = "usuarios.yaml"
 # Configuración de la página
 st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
