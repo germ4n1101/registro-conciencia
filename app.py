@@ -25,8 +25,10 @@ def cargar_usuarios():
     if not os.path.exists(USERS_FILE):
         return {}
     with open(USERS_FILE, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
-
+        data = yaml.safe_load(f)
+        if not isinstance(data, dict):
+            return {}
+        return data
 def guardar_usuarios(usuarios):
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         yaml.safe_dump(usuarios, f)
