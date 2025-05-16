@@ -78,7 +78,7 @@ if st.button("Guardar y reflexionar"):
                 message=prompt_ia
             )
 
-            st.subheader("🧠 Reflexión de la IA")
+            st.subheader("🧠 Reflexión de ge German para ti")
             st.write(respuesta.text)
 
         except Exception as e:
