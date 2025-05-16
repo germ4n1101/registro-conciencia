@@ -129,7 +129,7 @@ Meta: {meta}
                 message=prompt_ia
             )
 
-            st.subheader("🧠 Reflexión de German para ti")
+            st.subheader("🧠 Reflexión de German para ti, captura pantalla si te gusta y espero que tu vida sea la mejor desde esta reflexion")
             st.write(respuesta.text)
 
         except Exception as e:
