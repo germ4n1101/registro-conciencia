@@ -68,7 +68,7 @@ def obtener_registros(email):
 # --- Redirección después de login/registro ---
 if "login_exitoso" in st.session_state and st.session_state.login_exitoso:
     st.session_state.login_exitoso = False
-    st.experimental_rerun()
+    st.rerun()
 
 # --- Estado de sesión ---
 if "usuario_autenticado" not in st.session_state:
