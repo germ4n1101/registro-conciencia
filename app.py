@@ -162,7 +162,6 @@ Meta: {meta}
    if st.button("Cerrar sesión"):
         st.session_state.usuario_autenticado = None
         st.experimental_rerun()
-
 if __name__ == "__main__":
     main()
 
