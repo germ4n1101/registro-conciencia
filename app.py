@@ -5,8 +5,29 @@ import cohere
 from datetime import datetime
 
 # Leer la clave API de Cohere desde secrets.toml
-COHERE_API_KEY = st.secrets["COHERE_API_KEY"]
-cohere_client = cohere.Client(COHERE_API_KEY)
+try:
+    cohere_api_key = st.secrets["cohere"]["api_key"]
+    cohere_client = cohere.Client(cohere_api_key)
+except KeyError:
+    st.error("❌ No se encontró la clave API de Cohere en .streamlit/secrets.toml.")
+    st.stop()
+
+def generar_reflexion(prompt):
+    if not prompt or prompt.strip() == "":
+        st.warning("⚠️ El contenido del prompt está vacío. Por favor completa tus respuestas.")
+        return "No se puede generar una reflexión sin contenido."
+
+    try:
+        response = cohere_client.generate(
+            model="command",  # Usa un modelo disponible en el plan gratuito
+            prompt=prompt,
+            max_tokens=100,
+            temperature=0.7
+        )
+        return response.generations[0].text.strip()
+    except cohere.CohereError as e:
+        st.error(f"❌ Error al generar reflexión: {str(e)}")
+        return "Ocurrió un error al generar la reflexión con la IA."
 
 USERS_FILE = "usuarios.yaml"
 
