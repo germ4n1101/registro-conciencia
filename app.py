@@ -129,7 +129,7 @@ def main_app():
 # Control principal
 def main():
     st.sidebar.title("Navegación")
-    options = ["Iniciar sesión", "Registrarse", "Recuperar contraseña"]
+    options = ["Iniciar sesión", "Registrarse", "Recuperar contraseña", "Preguntas para estado"]
     choice = st.sidebar.radio("Seleccione una opción", options)
 
     if 'logged_in' not in st.session_state:
@@ -144,6 +144,8 @@ def main():
         register()
     elif choice == "Recuperar contraseña":
         recover_password()
+    elif choice == "preguntas para estado":
+        main_app()
 
 if __name__ == "__main__":
     main()
