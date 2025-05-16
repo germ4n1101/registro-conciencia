@@ -1,0 +1,15 @@
+credentials:
+  usernames:
+    Dantetero:
+      email: germ4n1101@gmail.com
+      name: Dantetero
+      password: '$2b$12$JYTo0BaQHh8aYQGVN6dt1ew0Hi6cvUzObtx.3qa4IuFFYmVnPYgL2'  # data1234
+
+cookie:
+  name: registro_conciencia_session
+  key: some_random_signature_key
+  expiry_days: 7
+
+preauthorized:
+  emails:
+    - germ4n1101@gmail.com
