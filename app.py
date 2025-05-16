@@ -114,18 +114,39 @@ def main_app():
 
     if st.button("Guardar y reflexionar"):
         texto = f"Hoy me siento {estado}. He estado pensando en {pensamiento}. Agradezco {gratitud}. Me gustaría lograr {meta}."
-        try:
-            response = cohere_client.generate(
-                model="command-r-plus",
-                prompt=f"Genera una reflexión positiva y motivadora basada en este texto: '{texto}'",
-                max_tokens=100
-            )
-            reflexion = response.generations[0].text.strip()
-            st.success("Entrada guardada y analizada por la IA.")
-            st.markdown(f"**Reflexión generada:** {reflexion}")
-        except Exception as e:
-            st.error("Error al generar la reflexión con Cohere. Por favor, intenta más tarde.")
+        )
 
+        prompt = (
+            "Actúa como una mente sabia y reflexiva que guía con compasión. "
+            "A partir del siguiente registro personal, escribe una reflexión motivadora, clara y positiva:"
+            f"\n\n{entrada_usuario}\n\nReflexión:"
+        )
+
+        try:
+            respuesta = co.chat(
+                model="command-r-plus",
+                message=prompt
+            )
+            reflexion = respuesta.text
+            st.success("✅ Entrada guardada y analizada por la IA.")
+            st.markdown("## 🧠 Reflexión de la IA")
+            st.write("**Reflexión:**")
+            st.write(reflexion)
+        except Exception as e:
+            st.error(f"⚠️ Error con la IA: {e}")
+        
+        #try:
+            #response = cohere_client.generate(
+                #model="command-r-plus",
+                #prompt=f"Genera una reflexión positiva y motivadora basada en este texto: '{texto}'",
+               # max_tokens=100
+           # )
+            #reflexion = response.generations[0].text.strip()
+            #st.success("Entrada guardada y analizada por la IA.")
+           # st.markdown(f"**Reflexión generada:** {reflexion}")
+        #except Exception as e:
+            #st.error("Error al generar la reflexión con Cohere. Por favor, intenta más tarde.")
+#
 # Control principal
 def main():
     if 'logged_in' not in st.session_state:
