@@ -1,156 +1,114 @@
 import streamlit as st
 import yaml
 import os
-import cohere
-from datetime import datetime
 
-# --- Configuración de la página ---
-st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
-
-# --- API de Cohere ---
-try:
-    cohere_api_key = st.secrets["cohere"]["api_key"]
-    co = cohere.Client(cohere_api_key)
-except KeyError:
-    st.error("❌ No se encontró la clave API de Cohere en .streamlit/secrets.toml.")
-    st.stop()
-
-# --- Archivos de usuarios y registros ---
 USERS_FILE = "usuarios.yaml"
-REGISTROS_DIR = "registros"
-os.makedirs(REGISTROS_DIR, exist_ok=True)
+ADMIN_EMAIL = "admin@admin.com"
 
-# --- Funciones auxiliares ---
+# ------------------------
+# Funciones de autenticación
+# ------------------------
+
 def cargar_usuarios():
     if not os.path.exists(USERS_FILE):
         return {}
-    with open(USERS_FILE, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    try:
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 def guardar_usuarios(usuarios):
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         yaml.safe_dump(usuarios, f)
 
-def guardar_registro(email, texto):
-    filename = os.path.join(REGISTROS_DIR, f"{email.replace('@', '_')}.txt")
-    with open(filename, "a", encoding="utf-8") as f:
-        f.write(texto + "\n" + "-"*40 + "\n")
+def login(email, password):
+    usuarios = cargar_usuarios()
+    return usuarios.get(email) == password
 
-def obtener_registros(email):
-    filename = os.path.join(REGISTROS_DIR, f"{email.replace('@', '_')}.txt")
-    if not os.path.exists(filename):
-        return "No tienes registros previos."
-    with open(filename, "r", encoding="utf-8") as f:
-        return f.read()
+def registrar(email, password):
+    usuarios = cargar_usuarios()
+    if not isinstance(usuarios, dict):
+        usuarios = {}
+    if email in usuarios:
+        return False
+    usuarios[email] = password
+    guardar_usuarios(usuarios)
+    return True
 
-def generar_reflexion(prompt):
-    if not prompt.strip():
-        return "No se puede generar una reflexión sin contenido."
-    try:
-        response = co.chat(
-            model="command-nightly",
-            message=prompt
-        )
-        return response.text.strip()
-    except Exception as e:
-        return f"⚠️ Error al generar reflexión: {e}"
+def cambiar_contraseña(email, nueva_contra):
+    usuarios = cargar_usuarios()
+    if email not in usuarios:
+        return False
+    usuarios[email] = nueva_contra
+    guardar_usuarios(usuarios)
+    return True
 
-def obtener_registros(email):
-    if not isinstance(email, str) or not email.strip():
-        return "⚠️ No se pudo cargar el historial: correo no válido."
+# ------------------------
+# Interfaz Streamlit
+# ------------------------
 
-    filename = os.path.join(REGISTROS_DIR, f"{email.replace('@', '_')}.txt")
-    if not os.path.exists(filename):
-        return "No tienes registros previos."
-    with open(filename, "r", encoding="utf-8") as f:
-        return f.read()
+st.set_page_config(page_title="Registro Conciencia", page_icon="🔐")
 
-# --- Redirección después de login/registro ---
-if "login_exitoso" in st.session_state and st.session_state.login_exitoso:
-    st.session_state.login_exitoso = False
-    st.rerun()
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+if "email" not in st.session_state:
+    st.session_state.email = ""
 
-# --- Estado de sesión ---
-if "usuario_autenticado" not in st.session_state:
-    st.session_state.usuario_autenticado = None
+st.title("🔐 Inicia sesión o regístrate")
 
-# --- Interfaz de Login y Registro ---
-if not st.session_state.usuario_autenticado:
-    st.subheader("🔐 Inicia sesión o regístrate")
-    tab_login, tab_registro = st.tabs(["Iniciar Sesión", "Registrarse"])
+tabs = st.tabs(["Iniciar Sesión", "Registrarse"])
 
-    with tab_login:
-        email = st.text_input("Correo electrónico", key="login_email")
-        password = st.text_input("Contraseña", type="password", key="login_pass")
-        if st.button("Iniciar sesión"):
-            usuarios = cargar_usuarios()
-            if email in usuarios and usuarios[email] == password:
-                st.session_state.usuario_autenticado = email
-                st.session_state.login_exitoso = True
-                st.stop()
+# ---------------- TAB LOGIN ----------------
+with tabs[0]:
+    login_email = st.text_input("Correo electrónico", key="login_email")
+    login_password = st.text_input("Contraseña", type="password", key="login_password")
+    if st.button("Iniciar sesión"):
+        if login(login_email, login_password):
+            st.session_state.autenticado = True
+            st.session_state.email = login_email
+            st.experimental_rerun()
+        else:
+            st.error("❌ Credenciales inválidas.")
+
+# ---------------- TAB REGISTRO ----------------
+with tabs[1]:
+    new_email = st.text_input("Correo electrónico", key="reg_email")
+    new_password = st.text_input("Contraseña", type="password", key="reg_password")
+    if st.button("Registrarse"):
+        if registrar(new_email, new_password):
+            st.success("✅ Registro exitoso. Ahora puedes iniciar sesión.")
+        else:
+            st.error("❌ El correo ya está registrado.")
+
+# ---------------- SESIÓN ACTIVA ----------------
+if st.session_state.autenticado:
+    st.success(f"Sesión iniciada como: {st.session_state.email}")
+    
+    st.markdown("### ⚙️ Opciones de cuenta")
+
+    # ---- CAMBIAR CONTRASEÑA ----
+    with st.expander("🔒 Cambiar contraseña"):
+        nueva_contraseña = st.text_input("Nueva contraseña", type="password")
+        if st.button("Actualizar contraseña"):
+            if cambiar_contraseña(st.session_state.email, nueva_contraseña):
+                st.success("Contraseña actualizada exitosamente.")
             else:
-                st.error("❌ Credenciales inválidas.")
+                st.error("No se pudo actualizar la contraseña.")
 
-    with tab_registro:
-        new_email = st.text_input("Correo electrónico", key="reg_email")
-        new_password = st.text_input("Contraseña", type="password", key="reg_pass")
-        if st.button("Registrarse"):
+    # ---- MODO ADMIN ----
+    if st.session_state.email == ADMIN_EMAIL:
+        with st.expander("👥 Ver todos los usuarios registrados (Admin)"):
             usuarios = cargar_usuarios()
-            if new_email in usuarios:
-                st.warning("⚠️ El correo ya está registrado.")
-            else:
-                usuarios[new_email] = new_password
-                guardar_usuarios(usuarios)
-                st.session_state.usuario_autenticado = new_email
-                st.session_state.login_exitoso = True
-                st.success("✅ Usuario registrado exitosamente.")
-                st.stop()
+            for user, pwd in usuarios.items():
+                st.write(f"📧 {user}")
 
-# --- Interfaz de Registro de Conciencia ---
-st.title("🧘 Registro de Conciencia")
-st.markdown("Responde las siguientes preguntas para registrar tu estado y generar una reflexión.")
+    # ---- CERRAR SESIÓN ----
+    if st.button("Cerrar sesión"):
+        st.session_state.autenticado = False
+        st.session_state.email = ""
+        st.experimental_rerun()
 
-estado_animo = st.text_input("1. ¿Cómo te sientes hoy?")
-situacion = st.text_input("2. ¿Qué ha estado ocupando tus pensamientos últimamente?")
-agradecimiento = st.text_input("3. ¿Qué agradeces hoy?")
-meta = st.text_input("4. ¿Qué te gustaría lograr o mejorar?")
-
-if st.button("Guardar y reflexionar"):
-    if not any([estado_animo, situacion, agradecimiento, meta]):
-        st.warning("Por favor responde al menos una pregunta.")
-    else:
-        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        entrada = f"""
-Fecha: {fecha}
-Estado de ánimo: {estado_animo}
-Situación actual: {situacion}
-Agradecimiento: {agradecimiento}
-Meta: {meta}
-"""
-        guardar_registro(st.session_state.usuario_autenticado, entrada)
-        st.success("✅ Entrada guardada y analizada por la IA.")
-
-        prompt_ia = (
-            f"Soy una persona reflexiva. Hoy escribí:\n\n"
-            f"Estado de ánimo: {estado_animo}\n"
-            f"Situación actual: {situacion}\n"
-            f"Agradecimiento: {agradecimiento}\n"
-            f"Meta: {meta}\n\n"
-            f"Por favor genera una reflexión amable, positiva y consciente basada en esta información."
-        )
-        reflexion = generar_reflexion(prompt_ia)
-
-        st.subheader("🧠 Reflexión para ti")
-        st.write(reflexion)
-
-# --- Mostrar reflexiones pasadas ---
-st.markdown("---")
-with st.expander("📜 Ver mis reflexiones pasadas"):
-    registros = obtener_registros(st.session_state.usuario_autenticado)
-    st.text_area("Historial de reflexiones", registros, height=300)
-
-# --- Cierre de sesión ---
-if st.button("Cerrar sesión"):
-    st.session_state.usuario_autenticado = None
-    st.success("Sesión cerrada.")
-    st.rerun()
+    # Aquí va tu contenido principal
+    st.write("🎯 Contenido principal de tu app...")
