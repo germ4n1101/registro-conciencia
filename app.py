@@ -84,11 +84,11 @@ if not st.session_state.usuario_autenticado:
         new_email = st.text_input("Correo electrónico", key="reg_email")
         new_password = st.text_input("Contraseña", type="password", key="reg_pass")
         if st.button("Registrarse"):
-            usuarios = cargar_usuarios()
+            usuarios = cargar_usuarios()  # <-- Aquí cargamos usuarios antes de asignar
             if new_email in usuarios:
                 st.warning("⚠️ El correo ya está registrado.")
             else:
-                usuarios[new_email] = new_password
+                usuarios[new_email] = new_password  # Asignación segura
                 guardar_usuarios(usuarios)
                 st.success("✅ Usuario registrado exitosamente. Por favor, inicia sesión.")
                 st.experimental_rerun()
@@ -96,7 +96,7 @@ if not st.session_state.usuario_autenticado:
     with tab_admin:
         admin_pass = st.text_input("Contraseña Admin", type="password")
         if st.button("Acceder Admin"):
-            if admin_pass == "tu_password_admin":  # Cambia por la contraseña que quieras
+            if admin_pass == "tu_password_admin":  # Cambia aquí por tu contraseña real
                 st.session_state.modo_admin = True
                 st.experimental_rerun()
             else:
@@ -107,7 +107,6 @@ if not st.session_state.usuario_autenticado:
             for usuario in usuarios:
                 st.write(f"- {usuario}")
 
-            # Cambiar contraseña de usuario
             usuario_cambiar = st.selectbox("Selecciona usuario para cambiar contraseña", list(usuarios.keys()))
             nueva_pass = st.text_input("Nueva contraseña", type="password")
             if st.button("Cambiar contraseña"):
@@ -161,4 +160,3 @@ Meta: {meta}
     if st.button("Cerrar sesión"):
         st.session_state.usuario_autenticado = None
         st.experimental_rerun()
-
