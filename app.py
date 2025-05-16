@@ -29,6 +29,7 @@ def cargar_usuarios():
         if not isinstance(data, dict):
             return {}
         return data
+
 def guardar_usuarios(usuarios):
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         yaml.safe_dump(usuarios, f)
@@ -60,25 +61,28 @@ def generar_reflexion(prompt):
 # --- Estado de sesión ---
 if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
-
 if "modo_admin" not in st.session_state:
     st.session_state.modo_admin = False
+if "login_exitoso" in st.session_state and st.session_state.login_exitoso:
+    st.session_state.login_exitoso = False
+    st.experimental_rerun()
 
-# --- Interfaz si NO hay usuario autenticado ---
+# --- Interfaz de Login y Registro ---
 if not st.session_state.usuario_autenticado:
-    st.title("🔐 Inicia sesión o regístrate")
-
-    tab_login, tab_registro, tab_admin = st.tabs(["Iniciar Sesión", "Registrarse", "Admin"])
+    st.subheader("🔐 Inicia sesión o regístrate")
+    tab_login, tab_registro = st.tabs(["Iniciar Sesión", "Registrarse"])
 
     with tab_login:
         email = st.text_input("Correo electrónico", key="login_email")
         password = st.text_input("Contraseña", type="password", key="login_pass")
         if st.button("Iniciar sesión"):
             usuarios = cargar_usuarios()
-            if email in usuarios and usuarios[email] == password:
+            if email in usuarios and usuarios[email]["password"] == password:
                 st.session_state.usuario_autenticado = email
-                st.session_state.modo_admin = False
-                st.experimental_rerun()  # Recarga para mostrar la interfaz principal
+                st.session_state.modo_admin = email == "admin@admin.com"
+                st.session_state.login_exitoso = True
+                st.success("Inicio de sesión exitoso.")
+                st.stop()
             else:
                 st.error("❌ Credenciales inválidas.")
 
@@ -86,84 +90,84 @@ if not st.session_state.usuario_autenticado:
         new_email = st.text_input("Correo electrónico", key="reg_email")
         new_password = st.text_input("Contraseña", type="password", key="reg_pass")
         if st.button("Registrarse"):
-            usuarios = cargar_usuarios()  # <-- Aquí cargamos usuarios antes de asignar
+            usuarios = cargar_usuarios()
+            if not isinstance(usuarios, dict):
+                usuarios = {}
             if new_email in usuarios:
                 st.warning("⚠️ El correo ya está registrado.")
             else:
-                usuarios[new_email] = new_password  # Asignación segura
+                usuarios[new_email] = {"password": new_password}
                 guardar_usuarios(usuarios)
-                st.success("✅ Usuario registrado exitosamente. Por favor, inicia sesión.")
-                st.experimental_rerun()
+                st.session_state.usuario_autenticado = new_email
+                st.session_state.login_exitoso = True
+                st.success("✅ Usuario registrado exitosamente.")
+                st.stop()
 
-    with tab_admin:
-        admin_pass = st.text_input("Contraseña Admin", type="password")
-        if st.button("Acceder Admin"):
-            if admin_pass == "tu_password_admin":  # Cambia aquí por tu contraseña real
-                st.session_state.modo_admin = True
-                st.experimental_rerun()
-            else:
-                st.error("❌ Contraseña admin incorrecta.")
-        if st.session_state.modo_admin:
-            usuarios = cargar_usuarios()
-            st.subheader("Usuarios registrados:")
-            for usuario in usuarios:
-                st.write(f"- {usuario}")
+# --- Interfaz de Administración ---
+if st.session_state.modo_admin:
+    st.sidebar.header("🔧 Panel de Administración")
+    usuarios = cargar_usuarios()
+    st.sidebar.subheader("👥 Usuarios registrados")
+    for user in usuarios:
+        st.sidebar.text(user)
 
-            usuario_cambiar = st.selectbox("Selecciona usuario para cambiar contraseña", list(usuarios.keys()))
-            nueva_pass = st.text_input("Nueva contraseña", type="password")
-            if st.button("Cambiar contraseña"):
-                usuarios[usuario_cambiar] = nueva_pass
-                guardar_usuarios(usuarios)
-                st.success("✅ Contraseña cambiada.")
-                st.experimental_rerun()
+# --- Cambiar contraseña ---
+st.sidebar.subheader("🔑 Cambiar contraseña")
+if st.session_state.usuario_autenticado:
+    nueva_contraseña = st.sidebar.text_input("Nueva contraseña", type="password")
+    if st.sidebar.button("Actualizar contraseña"):
+        usuarios = cargar_usuarios()
+        if st.session_state.usuario_autenticado in usuarios:
+            usuarios[st.session_state.usuario_autenticado]["password"] = nueva_contraseña
+            guardar_usuarios(usuarios)
+            st.sidebar.success("Contraseña actualizada correctamente.")
 
-# --- Interfaz si HAY usuario autenticado ---
-else:
-    st.title("🧘 Registro de Conciencia")
-    st.markdown(f"Bienvenido, **{st.session_state.usuario_autenticado}**")
-    estado_animo = st.text_input("1. ¿Cómo te sientes hoy?")
-    situacion = st.text_input("2. ¿Qué ha estado ocupando tus pensamientos últimamente?")
-    agradecimiento = st.text_input("3. ¿Qué agradeces hoy?")
-    meta = st.text_input("4. ¿Qué te gustaría lograr o mejorar?")
+# --- Registro de Conciencia ---
+st.title("🧘 Registro de Conciencia")
+st.markdown("Responde las siguientes preguntas para registrar tu estado y generar una reflexión.")
 
-    if st.button("Guardar y reflexionar"):
-        if not any([estado_animo, situacion, agradecimiento, meta]):
-            st.warning("Por favor responde al menos una pregunta.")
-        else:
-            fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            entrada = f"""
+estado_animo = st.text_input("1. ¿Cómo te sientes hoy?")
+situacion = st.text_input("2. ¿Qué ha estado ocupando tus pensamientos últimamente?")
+agradecimiento = st.text_input("3. ¿Qué agradeces hoy?")
+meta = st.text_input("4. ¿Qué te gustaría lograr o mejorar?")
+
+if st.button("Guardar y reflexionar"):
+    if not any([estado_animo, situacion, agradecimiento, meta]):
+        st.warning("Por favor responde al menos una pregunta.")
+    else:
+        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        entrada = f"""
 Fecha: {fecha}
 Estado de ánimo: {estado_animo}
 Situación actual: {situacion}
 Agradecimiento: {agradecimiento}
 Meta: {meta}
 """
-            guardar_registro(st.session_state.usuario_autenticado, entrada)
-            st.success("✅ Entrada guardada y analizada por la IA.")
+        guardar_registro(st.session_state.usuario_autenticado, entrada)
+        st.success("✅ Entrada guardada y analizada por la IA.")
 
-            prompt_ia = (
-                f"Soy una persona reflexiva. Hoy escribí:\n\n"
-                f"Estado de ánimo: {estado_animo}\n"
-                f"Situación actual: {situacion}\n"
-                f"Agradecimiento: {agradecimiento}\n"
-                f"Meta: {meta}\n\n"
-                f"Por favor genera una reflexión amable, positiva y consciente basada en esta información."
-            )
-            reflexion = generar_reflexion(prompt_ia)
+        prompt_ia = (
+            f"Soy una persona reflexiva. Hoy escribí:\n\n"
+            f"Estado de ánimo: {estado_animo}\n"
+            f"Situación actual: {situacion}\n"
+            f"Agradecimiento: {agradecimiento}\n"
+            f"Meta: {meta}\n\n"
+            f"Por favor genera una reflexión amable, positiva y consciente basada en esta información."
+        )
+        reflexion = generar_reflexion(prompt_ia)
 
-            st.subheader("🧠 Reflexión para ti")
-            st.write(reflexion)
+        st.subheader("🧠 Reflexión para ti")
+        st.write(reflexion)
 
-    st.markdown("---")
-    with st.expander("📜 Ver mis reflexiones pasadas"):
-        registros = obtener_registros(st.session_state.usuario_autenticado)
-        st.text_area("Historial de reflexiones", registros, height=300) if st.button("Cerrar sesión"):
-      st.session_state.usuario_autenticado = None
-      st.session_state.modo_admin = False
-      st.success("Sesión cerrada.")
-      st.experimental_rerun() 
-      
-if __name__ == "__main__":
-    main()
-    
+# --- Mostrar reflexiones pasadas ---
+st.markdown("---")
+with st.expander("📜 Ver mis reflexiones pasadas"):
+    registros = obtener_registros(st.session_state.usuario_autenticado)
+    st.text_area("Historial de reflexiones", registros, height=300)
 
+# --- Cierre de sesión ---
+if st.button("Cerrar sesión"):
+    st.session_state.usuario_autenticado = None
+    st.session_state.modo_admin = False
+    st.success("Sesión cerrada.")
+    st.experimental_rerun()
