@@ -24,9 +24,8 @@ def guardar_usuarios(usuarios):
 
 def generar_reflexion(prompt):
     if not prompt or prompt.strip() == "":
-        st.warning("⚠️ El contenido del prompt está vacío. Por favor completa tus respuestas.")
+        st.warning("⚠️ El contenido del prompt está vacío.")
         return "No se puede generar una reflexión sin contenido."
-
     try:
         response = cohere_client.generate(
             model="command",
@@ -37,16 +36,14 @@ def generar_reflexion(prompt):
         return response.generations[0].text.strip()
     except cohere.CohereError as e:
         st.error(f"❌ Error al generar reflexión: {str(e)}")
-        return "Ocurrió un error al generar la reflexión con la IA."
+        return "Ocurrió un error con la IA."
 
 # --- Inicialización ---
 USERS_FILE = "usuarios.yaml"
-DIRECTORIO_ENTRADAS = "entradas"
+ENTRADAS_DIR = "entradas"
+os.makedirs(ENTRADAS_DIR, exist_ok=True)
 
-# Crea el directorio si no existe
-os.makedirs(DIRECTORIO_ENTRADAS, exist_ok=True)
-
-# Clave de Cohere
+# Cohere API
 try:
     cohere_api_key = st.secrets["cohere"]["api_key"]
     cohere_client = cohere.Client(cohere_api_key)
@@ -58,7 +55,7 @@ if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
 
 # --- Login / Registro ---
-if not st.session_state.usuario_autenticado:
+if st.session_state.usuario_autenticado is None:
     with st.sidebar:
         st.header("🔐 Iniciar sesión / Registrarse")
         email = st.text_input("Correo electrónico")
@@ -66,14 +63,17 @@ if not st.session_state.usuario_autenticado:
 
         usuarios = cargar_usuarios()
 
-        if st.button("Iniciar sesión"):
+        col1, col2 = st.columns(2)
+
+        if col1.button("Iniciar sesión"):
             if email in usuarios and usuarios[email]["password"] == hash_password(password):
                 st.session_state.usuario_autenticado = email
+                st.success("✅ Inicio de sesión exitoso. Cargando preguntas...")
                 st.experimental_rerun()
             else:
                 st.error("❌ Correo o contraseña incorrectos.")
 
-        if st.button("Registrarse"):
+        if col2.button("Registrarse"):
             if email in usuarios:
                 st.warning("⚠️ Este correo ya está registrado.")
             else:
@@ -92,21 +92,21 @@ situacion = st.text_input("2. ¿Qué ha estado ocupando tus pensamientos última
 agradecimiento = st.text_input("3. ¿Qué agradeces hoy?")
 meta = st.text_input("4. ¿Qué te gustaría lograr o mejorar?")
 
+archivo_usuario = os.path.join(ENTRADAS_DIR, f"{st.session_state.usuario_autenticado}.txt")
+
 if st.button("Guardar y reflexionar"):
     if not any([estado_animo, situacion, agradecimiento, meta]):
         st.warning("⚠️ Por favor responde al menos una pregunta.")
     else:
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        entrada = f"""
-Fecha: {fecha}
+        entrada = f"""Fecha: {fecha}
 Estado de ánimo: {estado_animo}
 Situación actual: {situacion}
 Agradecimiento: {agradecimiento}
 Meta: {meta}
-{"-"*40}
+{'-'*40}
 """
 
-        archivo_usuario = os.path.join(DIRECTORIO_ENTRADAS, f"{st.session_state.usuario_autenticado}.txt")
         with open(archivo_usuario, "a", encoding="utf-8") as f:
             f.write(entrada)
 
@@ -126,7 +126,21 @@ Meta: {meta}
                 model="command-nightly",
                 message=prompt_ia
             )
-            st.subheader("🧠 Reflexión de German para ti")
+            st.subheader("🧠 Reflexión generada")
             st.write(respuesta.text)
         except Exception as e:
             st.error(f"⚠️ Error con la IA: {e}")
+
+# --- Mostrar historial del usuario ---
+st.divider()
+st.subheader("📜 Mis registros anteriores")
+
+if os.path.exists(archivo_usuario):
+    with open(archivo_usuario, "r", encoding="utf-8") as f:
+        contenido = f.read()
+        if contenido.strip():
+            st.text_area("🗂️ Historial personal", contenido, height=300)
+        else:
+            st.info("No tienes registros aún.")
+else:
+    st.info("No se ha creado tu archivo de registro.")
