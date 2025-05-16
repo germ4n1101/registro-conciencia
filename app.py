@@ -157,9 +157,7 @@ Meta: {meta}
     st.markdown("---")
     with st.expander("📜 Ver mis reflexiones pasadas"):
         registros = obtener_registros(st.session_state.usuario_autenticado)
-        st.text_area("Historial de reflexiones", registros, height=300)
-        
-        if st.button("Cerrar sesión"):
+        st.text_area("Historial de reflexiones", registros, height=300) if st.button("Cerrar sesión"):
       st.session_state.usuario_autenticado = None
       st.session_state.modo_admin = False
       st.success("Sesión cerrada.")
@@ -167,4 +165,5 @@ Meta: {meta}
       
 if __name__ == "__main__":
     main()
+    
 
