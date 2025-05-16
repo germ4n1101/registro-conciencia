@@ -6,6 +6,34 @@ from datetime import datetime
 
 # --- Configuración de la página ---
 st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
+st.image("images/logo.png", width=120)
+import streamlit as st
+
+st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
+
+# Branding: Logo
+st.image("images/logo.png", width=120)
+
+# Branding: CSS personalizado
+st.markdown("""
+    <style>
+    .main { background-color: #f4f6f8; }
+    .stButton>button {
+        background-color: #6c63ff;
+        color: white;
+        border-radius: 8px;
+        font-size: 18px;
+        padding: 10px 24px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Imagen de portada (opcional)
+st.image("images/portada.jpg", use_column_width=True)
+
+# ... Resto de tu código ...
+
+st.image("images/portada.jpg", use_column_width=True)
 st.sidebar.title("Menú de navegación")
 seccion = st.sidebar.radio(
     "Ir a:",
