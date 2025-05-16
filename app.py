@@ -160,5 +160,11 @@ Meta: {meta}
         st.text_area("Historial de reflexiones", registros, height=300)
 
    if st.button("Cerrar sesión"):
-        st.session_state.usuario_autenticado = None
-        st.experimental_rerun()
+            st.session_state.sesion_iniciada = False
+            st.session_state.usuario_actual = None
+            st.success("Sesión cerrada.")
+            st.rerun()
+
+if __name__ == "__main__":
+    main()
+
