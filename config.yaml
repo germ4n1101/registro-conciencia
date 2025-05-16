@@ -1,10 +1,10 @@
 credentials:
   usernames:
-    usuario1:
-      email: usuario1@ejemplo.com
-      name: Usuario Uno
-      password: pbkdf2:sha256:260000$micontraseñaencriptada
+    germ4n1101:
+      email: germ4n1101@ejemplo.com
+      name: Germán
+      password: pbkdf2:sha256:260000$AvxLyivSLzlsUPe2$79ec0cc4a7bd95a3ab40990e3512dd929f80c53f96d4e1d97c30c272e3c5d3de
 cookie:
-  name: autenticacion_conciencia
-  key: secreto123
+  name: registro_conciencia
+  key: clave_ultrasecreta
   expiry_days: 30
