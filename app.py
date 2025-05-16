@@ -5,8 +5,21 @@ import cohere
 from datetime import datetime
 import hashlib
 
-# --- Configuración de la página ---
+# Configuración de la página
 st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘", layout="centered")
+
+# --- Inicialización ---
+USERS_FILE = "usuarios.yaml"
+ENTRADAS_DIR = "entradas"
+os.makedirs(ENTRADAS_DIR, exist_ok=True)
+
+# Cohere API
+try:
+    cohere_api_key = st.secrets["cohere"]["api_key"]
+    cohere_client = cohere.Client(cohere_api_key)
+except KeyError:
+    st.error("❌ No se encontró la clave API de Cohere en .streamlit/secrets.toml.")
+    st.stop()
 
 # --- Funciones auxiliares ---
 def hash_password(password):
@@ -23,9 +36,6 @@ def guardar_usuarios(usuarios):
         yaml.dump(usuarios, file)
 
 def generar_reflexion(prompt):
-    if not prompt or prompt.strip() == "":
-        st.warning("⚠️ El contenido del prompt está vacío.")
-        return "No se puede generar una reflexión sin contenido."
     try:
         response = cohere_client.generate(
             model="command",
@@ -34,28 +44,15 @@ def generar_reflexion(prompt):
             temperature=0.7
         )
         return response.generations[0].text.strip()
-    except cohere.CohereError as e:
-        st.error(f"❌ Error al generar reflexión: {str(e)}")
-        return "Ocurrió un error con la IA."
+    except Exception as e:
+        return f"Error al generar la reflexión: {e}"
 
-# --- Inicialización ---
-USERS_FILE = "usuarios.yaml"
-ENTRADAS_DIR = "entradas"
-os.makedirs(ENTRADAS_DIR, exist_ok=True)
-
-# Cohere API
-try:
-    cohere_api_key = st.secrets["cohere"]["api_key"]
-    cohere_client = cohere.Client(cohere_api_key)
-except KeyError:
-    st.error("❌ No se encontró la clave API de Cohere en .streamlit/secrets.toml.")
-    st.stop()
-
+# Estado de sesión
 if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
 
 # --- Login / Registro ---
-if st.session_state.usuario_autenticado is None:
+if not st.session_state.usuario_autenticado:
     with st.sidebar:
         st.header("🔐 Iniciar sesión / Registrarse")
         email = st.text_input("Correo electrónico")
@@ -68,8 +65,7 @@ if st.session_state.usuario_autenticado is None:
         if col1.button("Iniciar sesión"):
             if email in usuarios and usuarios[email]["password"] == hash_password(password):
                 st.session_state.usuario_autenticado = email
-                st.success("✅ Inicio de sesión exitoso. Cargando preguntas...")
-                st.experimental_rerun()
+                st.success("✅ Inicio de sesión exitoso. Puedes comenzar abajo.")
             else:
                 st.error("❌ Correo o contraseña incorrectos.")
 
