@@ -1,12 +1,64 @@
 import streamlit as st
 import yaml
 import os
+import hashlib
 import cohere
 from datetime import datetime
 
-# API Key de Cohere (reemplaza con la tuya)
-#COHERE_API_KEY = "hTRHKEoz2gRAe68ILa7SqCq6T82lZn1muCV619EX"
-#co = cohere.Client(COHERE_API_KEY)
+# ---------- CONFIGURACIÓN ----------
+st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
+
+# ---------- FUNCIONES DE AUTENTICACIÓN ----------
+USERS_FILE = "usuarios.yaml"
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def load_users():
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+def save_users(users):
+    with open(USERS_FILE, "w") as f:
+        yaml.dump(users, f)
+
+def login_or_register():
+    st.sidebar.title("🔐 Autenticación")
+    menu = st.sidebar.radio("Elige una opción:", ["Iniciar sesión", "Registrarse"])
+
+    users = load_users()
+
+    if menu == "Registrarse":
+        email = st.sidebar.text_input("Correo electrónico")
+        password = st.sidebar.text_input("Contraseña", type="password")
+        if st.sidebar.button("Crear cuenta"):
+            if email in users:
+                st.sidebar.warning("⚠️ El correo ya está registrado.")
+            else:
+                users[email] = {"password": hash_password(password)}
+                save_users(users)
+                st.sidebar.success("✅ Usuario registrado. Ahora inicia sesión.")
+
+    if menu == "Iniciar sesión":
+        email = st.sidebar.text_input("Correo electrónico")
+        password = st.sidebar.text_input("Contraseña", type="password")
+        if st.sidebar.button("Iniciar sesión"):
+            if email in users and users[email]["password"] == hash_password(password):
+                st.session_state["usuario_autenticado"] = email
+                st.sidebar.success(f"¡Bienvenido, {email}!")
+            else:
+                st.sidebar.error("❌ Credenciales incorrectas")
+
+# ---------- VALIDAR AUTENTICACIÓN ----------
+if "usuario_autenticado" not in st.session_state:
+    login_or_register()
+    st.stop()
+
+usuario_actual = st.session_state["usuario_autenticado"]
+
+# ---------- COHERE API ----------
 try:
     cohere_api_key = st.secrets["cohere"]["api_key"]
     cohere_client = cohere.Client(cohere_api_key)
@@ -21,7 +73,7 @@ def generar_reflexion(prompt):
 
     try:
         response = cohere_client.generate(
-            model="command",  # Usa un modelo disponible en el plan gratuito
+            model="command",
             prompt=prompt,
             max_tokens=100,
             temperature=0.7
@@ -31,39 +83,38 @@ def generar_reflexion(prompt):
         st.error(f"❌ Error al generar reflexión: {str(e)}")
         return "Ocurrió un error al generar la reflexión con la IA."
 
-USERS_FILE = "usuarios.yaml"
-# Configuración de la página
-st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
+# ---------- INTERFAZ PRINCIPAL ----------
 st.title("🧘 Registro de Conciencia")
 st.markdown("Responde las siguientes preguntas para registrar tu estado y generar una reflexión.")
 
-# Preguntas de entrada
 estado_animo = st.text_input("1. ¿Cómo te sientes hoy?")
 situacion = st.text_input("2. ¿Qué ha estado ocupando tus pensamientos últimamente?")
 agradecimiento = st.text_input("3. ¿Qué agradeces hoy?")
 meta = st.text_input("4. ¿Qué te gustaría lograr o mejorar?")
 
-# Botón de guardar y reflexionar
+# ---------- PROCESO AL GUARDAR ----------
 if st.button("Guardar y reflexionar"):
     if not any([estado_animo, situacion, agradecimiento, meta]):
         st.warning("Por favor responde al menos una pregunta.")
     else:
-        # Guardar entrada
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         entrada = f"""
-        Fecha: {fecha}
-        Estado de ánimo: {estado_animo}
-        Situación actual: {situacion}
-        Agradecimiento: {agradecimiento}
-        Meta: {meta}
-        """
-        with open("registro_conciencia.txt", "a", encoding="utf-8") as archivo:
+Fecha: {fecha}
+Usuario: {usuario_actual}
+Estado de ánimo: {estado_animo}
+Situación actual: {situacion}
+Agradecimiento: {agradecimiento}
+Meta: {meta}
+"""
+
+        os.makedirs("registros", exist_ok=True)
+        filename = f"registros/{usuario_actual.replace('@', '_at_')}.txt"
+        with open(filename, "a", encoding="utf-8") as archivo:
             archivo.write(entrada + "\n" + "-"*40 + "\n")
 
         st.success("✅ Entrada guardada y analizada por la IA.")
 
         try:
-            # Generar reflexión con Cohere
             prompt_ia = (
                 f"Soy una persona reflexiva. Hoy escribí:\n\n"
                 f"Estado de ánimo: {estado_animo}\n"
