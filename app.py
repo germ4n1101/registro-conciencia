@@ -85,7 +85,7 @@ if not st.session_state.usuario_autenticado:
                 st.session_state.usuario_autenticado = email
                 st.session_state.login_exitoso = True
                 st.session_state.es_admin = email == "admin@admin.com"
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("❌ Credenciales inválidas.")
 
@@ -153,7 +153,7 @@ Meta: {meta}
         st.session_state.usuario_autenticado = None
         st.session_state.login_exitoso = False
         st.session_state.es_admin = False
-        st.experimental_rerun()
+        st.rerun()
 
     with st.expander("🔐 Cambiar contraseña"):
         nueva = st.text_input("Nueva contraseña", type="password")
