@@ -1,11 +1,10 @@
 credentials:
-  usernames: germ4n
-      name: German castro
-      email: germ4n1101@gmail.com
-      password: '$2b$12$KhBqCLAYy7S2rkpYJbJG0uEUDDc6yaqlxI7eJ3Fkv3TOrzZaxBBhy'  # hash de '1234'
+  usernames:
+    usuario1:
+      email: usuario1@ejemplo.com
+      name: Usuario Uno
+      password: pbkdf2:sha256:260000$micontraseñaencriptada
 cookie:
+  name: autenticacion_conciencia
+  key: secreto123
   expiry_days: 30
-  key: some_signature_key
-  name: some_cookie_name
-preauthorized:
-  emails: germ4n1101@gmail.com
