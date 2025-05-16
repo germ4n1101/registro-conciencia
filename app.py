@@ -49,7 +49,7 @@ if st.button("Guardar y reflexionar"):
         st.warning("Por favor responde al menos una pregunta.")
     else:
         # Guardar entrada
-        fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         entrada = f"""
         Fecha: {fecha}
         Estado de ánimo: {estado_animo}
