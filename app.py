@@ -151,5 +151,6 @@ def main():
         elif choice == "Cerrar sesión":
             st.session_state['logged_in'] = False
             st.success("Sesión cerrada con éxito. Puedes iniciar sesión nuevamente.")
-
+if __name__ == "__main__":
+    main()
 
