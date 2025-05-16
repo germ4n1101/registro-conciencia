@@ -7,9 +7,31 @@ from datetime import datetime
 # API Key de Cohere (reemplaza con la tuya)
 #COHERE_API_KEY = "hTRHKEoz2gRAe68ILa7SqCq6T82lZn1muCV619EX"
 #co = cohere.Client(COHERE_API_KEY)
-cohere_api_key = st.secrets["cohere"]["api_key"]
+try:
+    cohere_api_key = st.secrets["cohere"]["api_key"]
     cohere_client = cohere.Client(cohere_api_key)
+except KeyError:
+    st.error("❌ No se encontró la clave API de Cohere en .streamlit/secrets.toml.")
+    st.stop()
 
+def generar_reflexion(prompt):
+    if not prompt or prompt.strip() == "":
+        st.warning("⚠️ El contenido del prompt está vacío. Por favor completa tus respuestas.")
+        return "No se puede generar una reflexión sin contenido."
+
+    try:
+        response = cohere_client.generate(
+            model="command",  # Usa un modelo disponible en el plan gratuito
+            prompt=prompt,
+            max_tokens=100,
+            temperature=0.7
+        )
+        return response.generations[0].text.strip()
+    except cohere.CohereError as e:
+        st.error(f"❌ Error al generar reflexión: {str(e)}")
+        return "Ocurrió un error al generar la reflexión con la IA."
+
+USERS_FILE = "usuarios.yaml"
 # Configuración de la página
 st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
 st.title("🧘 Registro de Conciencia")
