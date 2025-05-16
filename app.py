@@ -4,7 +4,6 @@ import os
 import cohere
 from datetime import datetime
 
-# --- Configuración de la página ---
 st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
 st.image("images/logo.png", width=120)
 import streamlit as st
