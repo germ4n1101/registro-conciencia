@@ -6,6 +6,25 @@ from datetime import datetime
 
 # --- Configuración de la página ---
 st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
+# 👇 Agrega aquí tu CSS personalizado
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f4f6f8;
+    }
+    .stButton>button {
+        background-color: #6c63ff;
+        color: white;
+        border-radius: 8px;
+        font-size: 18px;
+        padding: 10px 24px;
+    }
+    .stTextInput>div>div>input {
+        border-radius: 8px;
+        border: 1px solid #6c63ff;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- API de Cohere ---
 try:
