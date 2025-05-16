@@ -68,7 +68,8 @@ with tabs[0]:
         if login(login_email, login_password):
             st.session_state.autenticado = True
             st.session_state.email = login_email
-            st.experimental_rerun()
+            st.rerun()
+            
         else:
             st.error("❌ Credenciales inválidas.")
 
@@ -106,9 +107,9 @@ if st.session_state.autenticado:
 
     # ---- CERRAR SESIÓN ----
     if st.button("Cerrar sesión"):
-        st.session_state.autenticado = False
-        st.session_state.email = ""
-        st.experimental_rerun()
+    st.session_state.usuario_autenticado = None
+    st.success("Sesión cerrada.")
+    st.rerun()
 
     # Aquí va tu contenido principal
     st.write("🎯 Contenido principal de tu app...")
