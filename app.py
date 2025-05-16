@@ -3,83 +3,100 @@ import yaml
 import os
 import cohere
 from datetime import datetime
-import hashlib
 
-# Configuración de la página
-st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘", layout="centered")
+# --- Configuración de la página ---
+st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
 
-# --- Inicialización ---
-USERS_FILE = "usuarios.yaml"
-ENTRADAS_DIR = "entradas"
-os.makedirs(ENTRADAS_DIR, exist_ok=True)
-
-# Cohere API
+# --- API de Cohere ---
 try:
     cohere_api_key = st.secrets["cohere"]["api_key"]
-    cohere_client = cohere.Client(cohere_api_key)
+    co = cohere.Client(cohere_api_key)
 except KeyError:
     st.error("❌ No se encontró la clave API de Cohere en .streamlit/secrets.toml.")
     st.stop()
 
-# --- Funciones auxiliares ---
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+# --- Archivos de usuarios y registros ---
+USERS_FILE = "usuarios.yaml"
+REGISTROS_DIR = "registros"
+os.makedirs(REGISTROS_DIR, exist_ok=True)
 
+# --- Funciones auxiliares ---
 def cargar_usuarios():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r", encoding="utf-8") as file:
-            return yaml.safe_load(file) or {}
-    return {}
+    if not os.path.exists(USERS_FILE):
+        return {}
+    with open(USERS_FILE, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
 
 def guardar_usuarios(usuarios):
-    with open(USERS_FILE, "w", encoding="utf-8") as file:
-        yaml.dump(usuarios, file)
+    with open(USERS_FILE, "w", encoding="utf-8") as f:
+        yaml.safe_dump(usuarios, f)
+
+def guardar_registro(email, texto):
+    filename = os.path.join(REGISTROS_DIR, f"{email.replace('@', '_')}.txt")
+    with open(filename, "a", encoding="utf-8") as f:
+        f.write(texto + "\n" + "-"*40 + "\n")
+
+def obtener_registros(email):
+    filename = os.path.join(REGISTROS_DIR, f"{email.replace('@', '_')}.txt")
+    if not os.path.exists(filename):
+        return "No tienes registros previos."
+    with open(filename, "r", encoding="utf-8") as f:
+        return f.read()
 
 def generar_reflexion(prompt):
+    if not prompt.strip():
+        return "No se puede generar una reflexión sin contenido."
     try:
-        response = cohere_client.generate(
-            model="command",
-            prompt=prompt,
-            max_tokens=100,
-            temperature=0.7
+        response = co.chat(
+            model="command-nightly",
+            message=prompt
         )
-        return response.generations[0].text.strip()
+        return response.text.strip()
     except Exception as e:
-        return f"Error al generar la reflexión: {e}"
+        return f"⚠️ Error al generar reflexión: {e}"
 
-# Estado de sesión
+# --- Redirección después de login/registro ---
+if "login_exitoso" in st.session_state and st.session_state.login_exitoso:
+    st.session_state.login_exitoso = False
+    st.experimental_rerun()
+
+# --- Estado de sesión ---
 if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
 
-# --- Login / Registro ---
+# --- Interfaz de Login y Registro ---
 if not st.session_state.usuario_autenticado:
-    with st.sidebar:
-        st.header("🔐 Iniciar sesión / Registrarse")
-        email = st.text_input("Correo electrónico")
-        password = st.text_input("Contraseña", type="password")
+    st.subheader("🔐 Inicia sesión o regístrate")
+    tab_login, tab_registro = st.tabs(["Iniciar Sesión", "Registrarse"])
 
-        usuarios = cargar_usuarios()
-
-        col1, col2 = st.columns(2)
-
-        if col1.button("Iniciar sesión"):
-            if email in usuarios and usuarios[email]["password"] == hash_password(password):
+    with tab_login:
+        email = st.text_input("Correo electrónico", key="login_email")
+        password = st.text_input("Contraseña", type="password", key="login_pass")
+        if st.button("Iniciar sesión"):
+            usuarios = cargar_usuarios()
+            if email in usuarios and usuarios[email] == password:
                 st.session_state.usuario_autenticado = email
-                st.success("✅ Inicio de sesión exitoso. Puedes comenzar abajo.")
+                st.session_state.login_exitoso = True
+                st.stop()
             else:
-                st.error("❌ Correo o contraseña incorrectos.")
+                st.error("❌ Credenciales inválidas.")
 
-        if col2.button("Registrarse"):
-            if email in usuarios:
-                st.warning("⚠️ Este correo ya está registrado.")
+    with tab_registro:
+        new_email = st.text_input("Correo electrónico", key="reg_email")
+        new_password = st.text_input("Contraseña", type="password", key="reg_pass")
+        if st.button("Registrarse"):
+            usuarios = cargar_usuarios()
+            if new_email in usuarios:
+                st.warning("⚠️ El correo ya está registrado.")
             else:
-                usuarios[email] = {"password": hash_password(password)}
+                usuarios[new_email] = new_password
                 guardar_usuarios(usuarios)
-                st.success("✅ Registro exitoso. Ahora puedes iniciar sesión.")
+                st.session_state.usuario_autenticado = new_email
+                st.session_state.login_exitoso = True
+                st.success("✅ Usuario registrado exitosamente.")
+                st.stop()
 
-    st.stop()
-
-# --- Pantalla principal ---
+# --- Interfaz de Registro de Conciencia ---
 st.title("🧘 Registro de Conciencia")
 st.markdown("Responde las siguientes preguntas para registrar tu estado y generar una reflexión.")
 
@@ -88,24 +105,19 @@ situacion = st.text_input("2. ¿Qué ha estado ocupando tus pensamientos última
 agradecimiento = st.text_input("3. ¿Qué agradeces hoy?")
 meta = st.text_input("4. ¿Qué te gustaría lograr o mejorar?")
 
-archivo_usuario = os.path.join(ENTRADAS_DIR, f"{st.session_state.usuario_autenticado}.txt")
-
 if st.button("Guardar y reflexionar"):
     if not any([estado_animo, situacion, agradecimiento, meta]):
-        st.warning("⚠️ Por favor responde al menos una pregunta.")
+        st.warning("Por favor responde al menos una pregunta.")
     else:
         fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        entrada = f"""Fecha: {fecha}
+        entrada = f"""
+Fecha: {fecha}
 Estado de ánimo: {estado_animo}
 Situación actual: {situacion}
 Agradecimiento: {agradecimiento}
 Meta: {meta}
-{'-'*40}
 """
-
-        with open(archivo_usuario, "a", encoding="utf-8") as f:
-            f.write(entrada)
-
+        guardar_registro(st.session_state.usuario_autenticado, entrada)
         st.success("✅ Entrada guardada y analizada por la IA.")
 
         prompt_ia = (
@@ -116,27 +128,20 @@ Meta: {meta}
             f"Meta: {meta}\n\n"
             f"Por favor genera una reflexión amable, positiva y consciente basada en esta información."
         )
+        reflexion = generar_reflexion(prompt_ia)
 
-        try:
-            respuesta = cohere_client.chat(
-                model="command-nightly",
-                message=prompt_ia
-            )
-            st.subheader("🧠 Reflexión generada")
-            st.write(respuesta.text)
-        except Exception as e:
-            st.error(f"⚠️ Error con la IA: {e}")
+        st.subheader("🧠 Reflexión para ti")
+        st.write(reflexion)
 
-# --- Mostrar historial del usuario ---
-st.divider()
-st.subheader("📜 Mis registros anteriores")
+# --- Mostrar reflexiones pasadas ---
+st.markdown("---")
+with st.expander("📜 Ver mis reflexiones pasadas"):
+    registros = obtener_registros(st.session_state.usuario_autenticado)
+    st.text_area("Historial de reflexiones", registros, height=300)
 
-if os.path.exists(archivo_usuario):
-    with open(archivo_usuario, "r", encoding="utf-8") as f:
-        contenido = f.read()
-        if contenido.strip():
-            st.text_area("🗂️ Historial personal", contenido, height=300)
-        else:
-            st.info("No tienes registros aún.")
-else:
-    st.info("No se ha creado tu archivo de registro.")
+# --- Cierre de sesión ---
+if st.button("Cerrar sesión"):
+    st.session_state.usuario_autenticado = None
+    st.success("Sesión cerrada.")
+    st.experimental_rerun()
+
