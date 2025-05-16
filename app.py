@@ -9,7 +9,7 @@ from datetime import datetime
 #co = cohere.Client(COHERE_API_KEY)
 try:
     cohere_api_key = st.secrets["cohere"]["api_key"]
-    co = cohere.Client(COHERE_API_KEY)
+    cohere_client = cohere.Client(cohere_api_key)
 except KeyError:
     st.error("❌ No se encontró la clave API de Cohere en .streamlit/secrets.toml.")
     st.stop()
