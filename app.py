@@ -6,6 +6,33 @@ from datetime import datetime
 
 # --- Configuración de la página ---
 st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
+st.sidebar.title("Menú de navegación")
+seccion = st.sidebar.radio(
+    "Ir a:",
+    ("Registro", "Historial", "Configuración")
+)
+if seccion == "Registro":
+    # Aquí va el código para el registro de conciencia (las preguntas y reflexión)
+    # Ejemplo:
+    st.title("🧘 Registro de Conciencia")
+    # ... resto del código del registro ...
+
+elif seccion == "Historial":
+    # Aquí va el código para mostrar el historial
+    st.title("📜 Historial de Reflexiones")
+    # ... resto del código del historial ...
+
+elif seccion == "Configuración":
+    # Aquí va el código para la configuración
+    st.title("⚙️ Configuración")
+    if st.button("Cerrar sesión"):
+        st.session_state.usuario_autenticado = None
+        st.session_state.login_exitoso = False
+        st.session_state.es_admin = False
+        st.rerun()  # Recuerda reemplazar st.experimental_rerun() por st.rerun()
+    # ... resto del código de configuración ...
+
+
 # 👇 Agrega aquí tu CSS personalizado
 st.markdown("""
     <style>
