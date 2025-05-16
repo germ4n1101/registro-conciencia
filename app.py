@@ -1,51 +1,71 @@
 import streamlit as st
 import cohere
-import datetime
-import os
+import yaml
+import streamlit_authenticator as stauth
+from yaml.loader import SafeLoader
+from datetime import datetime
 
-st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘‍♂️")
+# ---------------------------
+# Autenticación de usuarios
+# ---------------------------
+with open('config.yaml') as file:
+    config = yaml.load(file, Loader=SafeLoader)
 
-COHERE_API_KEY = os.getenv("hTRHKEoz2gRAe68ILa7SqCq6T82lZn1muCV619EX")
-co = cohere.Client(COHERE_API_KEY)
+authenticator = stauth.Authenticate(
+    config['credentials'],
+    config['cookie']['name'],
+    config['cookie']['key'],
+    config['cookie']['expiry_days']
+)
 
-st.title("🧘‍♂️ Registro de Conciencia")
-st.markdown("Responde las siguientes preguntas para registrar tu estado y generar una reflexión.")
+name, authentication_status, username = authenticator.login('Iniciar sesión', 'main')
 
-hoy = datetime.date.today().strftime("%d/%m/%Y")
+if authentication_status is False:
+    st.error('Usuario o contraseña incorrectos')
+elif authentication_status is None:
+    st.warning('Por favor, introduce tus credenciales')
+elif authentication_status:
 
-# Preguntas
-q1 = st.text_input("¿Cómo te sientes hoy?")
-q2 = st.text_input("¿Qué ha estado ocupando tus pensamientos últimamente?")
-q3 = st.text_input("¿Qué agradeces hoy?")
-q4 = st.text_input("¿Qué te gustaría lograr o mejorar?")
+    authenticator.logout('Cerrar sesión', 'sidebar')
+    st.sidebar.success(f'Bienvenido, {name}')
 
-if st.button("Guardar y reflexionar"):
-    if not all([q1, q2, q3, q4]):
-        st.warning("Por favor responde todas las preguntas antes de continuar.")
-    else:
-        entrada_usuario = (
-            f"Fecha: {hoy}\n"
-            f"Estado emocional: {q1}\n"
-            f"Pensamientos: {q2}\n"
-            f"Agradecimiento: {q3}\n"
-            f"Meta: {q4}"
-        )
+    # ---------------------------
+    # App Registro de Conciencia
+    # ---------------------------
+    st.markdown("<h1 style='text-align: center;'>🧘 Registro de Conciencia</h1>", unsafe_allow_html=True)
+    st.write("Responde las siguientes preguntas para registrar tu estado y generar una reflexión.")
 
-        prompt = (
-            "Actúa como una mente sabia y reflexiva que guía con compasión. "
-            "A partir del siguiente registro personal, escribe una reflexión motivadora, clara y positiva:"
-            f"\n\n{entrada_usuario}\n\nReflexión:"
-        )
+    # Inputs
+    estado = st.text_input("¿Cómo te sientes hoy?")
+    pensamiento = st.text_input("¿Qué ha estado ocupando tus pensamientos últimamente?")
+    gratitud = st.text_input("¿Qué agradeces hoy?")
+    mejora = st.text_input("¿Qué te gustaría lograr o mejorar?")
 
-        try:
-            respuesta = co.chat(
-                model="command-r-plus",
-                message=prompt
+    # Procesar y generar reflexión
+    if st.button("Guardar y reflexionar"):
+        if not all([estado, pensamiento, gratitud, mejora]):
+            st.warning("Por favor completa todos los campos.")
+        else:
+            # Conexión con Cohere
+            co = cohere.Client("hTRHKEoz2gRAe68ILa7SqCq6T82lZn1muCV619EX")
+
+            entrada = f"""Hoy me siento {estado}. He estado pensando mucho en {pensamiento}. 
+            Agradezco {gratitud}. Me gustaría mejorar o alcanzar: {mejora}.
+            Por favor, genera una breve reflexión positiva y personalizada basada en este estado."""
+
+            respuesta = co.generate(
+                model='command',
+                prompt=entrada,
+                max_tokens=100
             )
-            reflexion = respuesta.text
+
+            reflexion = respuesta.generations[0].text.strip()
+
+            # Guardar entrada localmente (opcional)
+            with open("registros.csv", "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now()},{name},{estado},{pensamiento},{gratitud},{mejora},{reflexion}\n")
+
+            # Mostrar resultado
             st.success("✅ Entrada guardada y analizada por la IA.")
-            st.markdown("## 🧠 Reflexión de la IA")
-            st.write("**Reflexión:**")
-            st.write(reflexion)
-        except Exception as e:
-            st.error(f"⚠️ Error con la IA: {e}")
+            st.markdown("### ✨ Reflexión generada:")
+            st.info(reflexion)
