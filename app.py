@@ -10,10 +10,6 @@ st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
 # Branding: Logo
 st.image("images/logo.png", width=120)
 
-# Imagen de portada (opcional)
-st.image("images/portada.jpg", use_column_width=True)
-
-# ... Resto de tu código ...
 
 # Branding: CSS personalizado
 st.markdown("""
@@ -28,6 +24,9 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+# Imagen de portada (opcional)
+# ... Resto de tu código ...
 
 st.image("images/portada.jpg", use_column_width=True)
 st.sidebar.title("Menú de navegación")
