@@ -8,8 +8,8 @@ import streamlit as st
 st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
 
 # Branding: Logo
-st.image("images/logo.png", use_container_width=True)
-st.image("images/portada.jpg", use_column_width=True)
+#st.image("images/logo.png", use_container_width=True)
+#st.image("images/portada.jpg", use_column_width=True)
 
 # Branding: CSS personalizado
 st.markdown("""
