@@ -1,8 +1,8 @@
-# 🧘 Registro de Conciencia
+# 🧘 Reflexión Diaria AI - Encuentra claridad con solo 4 preguntas
 
 **Una app web sencilla y poderosa para fomentar la autoobservación diaria y generar reflexiones personalizadas con IA.**
 
-[🔗 Probar la App](https://registro-conciencia-8w2acvotg4ehdnvtdpjghe.streamlit.app)
+[🔗 Probar la App](https://reflexiondiariaai.streamlit.app)
 
 ---
 
@@ -35,7 +35,7 @@
 ## 🚀 ¿Cómo usar?
 
 1. Abre la app desde el siguiente enlace:  
-   👉 [https://registro-conciencia-8w2acvotg4ehdnvtdpjghe.streamlit.app](https://registro-conciencia-8w2acvotg4ehdnvtdpjghe.streamlit.app)
+   👉 [https://registro-conciencia-8w2acvotg4ehdnvtdpjghe.streamlit.app](https://reflexiondiariaai.streamlit.app)
 
 2. Responde las siguientes preguntas:
    - ¿Cómo te sientes hoy?
