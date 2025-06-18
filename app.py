@@ -9,7 +9,7 @@ st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
 # Imagen de portada
 PORTADA_PATH = "images/portada.jpg"
 if os.path.exists(PORTADA_PATH):
-    st.image(PORTADA_PATH, use_container_width=True)
+    st.image("images/portada.jpg", use_container_width=True)
 else:
     st.warning("⚠️ No se encontró la imagen de portada.")
 
