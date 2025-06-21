@@ -134,7 +134,7 @@ else:
     seccion = st.sidebar.radio("Ir a:", ("Registro", "Historial", "Configuración"))
 
     if seccion == "Registro":
-        st.title("🧘 Registro de Conciencia")
+        st.title("🧘 cuentra claridad con solo 4 preguntas")
         estado_animo = st.text_input("1. ¿Cómo te sientes hoy?")
         situacion = st.text_input("2. ¿Qué ha estado ocupando tus pensamientos últimamente?")
         agradecimiento = st.text_input("3. ¿Qué agradeces hoy?")
@@ -159,7 +159,7 @@ else:
                 )
                 reflexion = generar_reflexion(prompt_ia)
 
-                st.subheader("🧠 Reflexión para ti")
+                st.subheader("🧠 Reflexión para ti, gracias German")
                 st.write(reflexion)
 
     elif seccion == "Historial":
