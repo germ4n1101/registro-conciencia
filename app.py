@@ -1,19 +1,13 @@
+# Versión actualizada de tu app con persistencia real usando SQLite
 import streamlit as st
-import yaml
-import os
+import sqlite3
 import cohere
 from datetime import datetime
+import os
 
 st.set_page_config(page_title="Encuentra claridad con solo 4 preguntas", page_icon="🧘")
 
-# Imagen de portada
-#PORTADA_PATH = "images/portada.jpg"
-#if os.path.exists(PORTADA_PATH):
-    #st.image("images/portada.jpg", use_container_width=True)
-#else:
-   # st.warning("⚠️ No se encontró la imagen de portada.")
-
-# CSS personalizado
+# --- Estilos ---
 st.markdown("""
     <style>
     .main { background-color: #f4f6f8; }
@@ -31,7 +25,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- API de Cohere ---
+# --- API Cohere ---
 try:
     cohere_api_key = st.secrets["cohere"]["api_key"]
     co = cohere.Client(cohere_api_key)
@@ -39,63 +33,73 @@ except KeyError:
     st.error("❌ No se encontró la clave API de Cohere en .streamlit/secrets.toml.")
     st.stop()
 
-# Archivos
-USERS_FILE = "usuarios.yaml"
-REGISTROS_DIR = "registros"
-os.makedirs(REGISTROS_DIR, exist_ok=True)
+# --- Base de datos SQLite ---
+conn = sqlite3.connect("database.db", check_same_thread=False)
+c = conn.cursor()
 
-# Funciones auxiliares
-def cargar_usuarios():
-    if not os.path.exists(USERS_FILE):
-        return {}
-    with open(USERS_FILE, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+c.execute('''
+    CREATE TABLE IF NOT EXISTS users (
+        email TEXT PRIMARY KEY,
+        password TEXT NOT NULL
+    )
+''')
 
-def guardar_usuarios(usuarios):
-    with open(USERS_FILE, "w", encoding="utf-8") as f:
-        yaml.safe_dump(usuarios, f, allow_unicode=True)
+c.execute('''
+    CREATE TABLE IF NOT EXISTS registros (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL,
+        fecha TEXT NOT NULL,
+        entrada TEXT NOT NULL
+    )
+''')
 
-def guardar_registro(email, texto):
-    filename = os.path.join(REGISTROS_DIR, f"{email.replace('@', '_')}.txt")
-    with open(filename, "a", encoding="utf-8") as f:
-        f.write(texto + "\n" + "-"*40 + "\n")
+conn.commit()
+
+# --- Funciones auxiliares ---
+def registrar_usuario(email, password):
+    try:
+        c.execute("INSERT INTO users (email, password) VALUES (?, ?)", (email, password))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+def validar_usuario(email, password):
+    c.execute("SELECT password FROM users WHERE email = ?", (email,))
+    result = c.fetchone()
+    return result and result[0] == password
+
+def cambiar_contrasena(email, nueva_pass):
+    c.execute("UPDATE users SET password = ? WHERE email = ?", (nueva_pass, email))
+    conn.commit()
+    return c.rowcount > 0
+
+def guardar_registro(email, entrada):
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    c.execute("INSERT INTO registros (email, fecha, entrada) VALUES (?, ?, ?)", (email, fecha, entrada))
+    conn.commit()
 
 def obtener_registros(email):
-    filename = os.path.join(REGISTROS_DIR, f"{email.replace('@', '_')}.txt")
-    if not os.path.exists(filename):
-        return "No tienes registros previos."
-    with open(filename, "r", encoding="utf-8") as f:
-        return f.read()
+    c.execute("SELECT fecha, entrada FROM registros WHERE email = ? ORDER BY fecha DESC", (email,))
+    rows = c.fetchall()
+    return "\n\n---\n\n".join([f"Fecha: {f}\n{e}" for f, e in rows]) or "No tienes registros previos."
 
 def generar_reflexion(prompt):
     if not prompt.strip():
         return "No se puede generar una reflexión sin contenido."
     try:
-        response = co.chat(
-            model="command-nightly",
-            message=prompt
-        )
+        response = co.chat(model="command-nightly", message=prompt)
         return response.text.strip()
     except Exception as e:
         return f"⚠️ Error al generar reflexión: {e}"
 
-def cambiar_contrasena(email, nueva_contrasena):
-    usuarios = cargar_usuarios()
-    if email in usuarios:
-        usuarios[email] = nueva_contrasena
-        guardar_usuarios(usuarios)
-        return True
-    return False
-
-# Estado de sesión
+# --- Estado de sesión ---
 if "usuario_autenticado" not in st.session_state:
     st.session_state.usuario_autenticado = None
-if "login_exitoso" not in st.session_state:
-    st.session_state.login_exitoso = False
 if "es_admin" not in st.session_state:
     st.session_state.es_admin = False
 
-# Interfaz de login y registro
+# --- Login y registro ---
 if not st.session_state.usuario_autenticado:
     st.subheader("🔐 Inicia sesión o regístrate")
     tab_login, tab_registro = st.tabs(["Iniciar Sesión", "Registrarse"])
@@ -104,10 +108,8 @@ if not st.session_state.usuario_autenticado:
         email = st.text_input("Correo electrónico", key="login_email")
         password = st.text_input("Contraseña", type="password", key="login_pass")
         if st.button("Iniciar sesión"):
-            usuarios = cargar_usuarios()
-            if email in usuarios and usuarios[email] == password:
+            if validar_usuario(email, password):
                 st.session_state.usuario_autenticado = email
-                st.session_state.login_exitoso = True
                 st.session_state.es_admin = email == "admin@admin.com"
                 st.rerun()
             else:
@@ -117,24 +119,21 @@ if not st.session_state.usuario_autenticado:
         new_email = st.text_input("Correo electrónico", key="reg_email")
         new_password = st.text_input("Contraseña", type="password", key="reg_pass")
         if st.button("Registrarse"):
-            usuarios = cargar_usuarios()
-            if new_email in usuarios:
-                st.warning("⚠️ El correo ya está registrado.")
-            else:
-                usuarios[new_email] = new_password
-                guardar_usuarios(usuarios)
-                st.session_state.usuario_autenticado = new_email
-                st.session_state.login_exitoso = True
+            if registrar_usuario(new_email, new_password):
                 st.success("✅ Usuario registrado exitosamente.")
+                st.session_state.usuario_autenticado = new_email
+                st.session_state.es_admin = new_email == "admin@admin.com"
                 st.rerun()
+            else:
+                st.warning("⚠️ El correo ya está registrado.")
 
-# Interfaz principal
+# --- App principal ---
 else:
     st.sidebar.title("Menú de navegación")
     seccion = st.sidebar.radio("Ir a:", ("Registro", "Historial", "Configuración"))
 
     if seccion == "Registro":
-        st.title("🧘 cuentra claridad con solo 4 preguntas")
+        st.title("🧘 Encuentra claridad con solo 4 preguntas")
         estado_animo = st.text_input("1. ¿Cómo te sientes hoy?")
         situacion = st.text_input("2. ¿Qué ha estado ocupando tus pensamientos últimamente?")
         agradecimiento = st.text_input("3. ¿Qué agradeces hoy?")
@@ -144,8 +143,12 @@ else:
             if not any([estado_animo, situacion, agradecimiento, meta]):
                 st.warning("Por favor responde al menos una pregunta.")
             else:
-                fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                entrada = f"""\nFecha: {fecha}\nEstado de ánimo: {estado_animo}\nSituación actual: {situacion}\nAgradecimiento: {agradecimiento}\nMeta: {meta}"""
+                entrada = f"""
+Estado de ánimo: {estado_animo}
+Situación actual: {situacion}
+Agradecimiento: {agradecimiento}
+Meta: {meta}"
+"""
                 guardar_registro(st.session_state.usuario_autenticado, entrada)
                 st.success("✅ Entrada guardada y analizada por la IA.")
 
@@ -159,7 +162,7 @@ else:
                 )
                 reflexion = generar_reflexion(prompt_ia)
 
-                st.subheader("🧠 Reflexión para ti inspirado por German")
+                st.subheader("🧠 Reflexión para ti inspirado por Germán")
                 st.write(reflexion)
 
     elif seccion == "Historial":
@@ -171,7 +174,6 @@ else:
         st.title("⚙️ Configuración")
         if st.button("Cerrar sesión"):
             st.session_state.usuario_autenticado = None
-            st.session_state.login_exitoso = False
             st.session_state.es_admin = False
             st.rerun()
 
@@ -185,7 +187,8 @@ else:
 
         if st.session_state.es_admin:
             st.subheader("👤 Usuarios registrados (Admin)")
-            usuarios = cargar_usuarios()
-            st.write("Total usuarios:", len(usuarios))
-            for correo in usuarios:
-                st.markdown(f"- {correo}")
+            c.execute("SELECT email FROM users")
+            users = c.fetchall()
+            for u in users:
+                st.markdown(f"- {u[0]}")
+
