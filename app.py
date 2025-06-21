@@ -4,7 +4,7 @@ import os
 import cohere
 from datetime import datetime
 
-st.set_page_config(page_title="Reflexión Diaria AI - Encuentra claridad con solo 4 preguntas", page_icon="🧘")
+st.set_page_config(page_title="Encuentra claridad con solo 4 preguntas", page_icon="🧘")
 
 # Imagen de portada
 #PORTADA_PATH = "images/portada.jpg"
