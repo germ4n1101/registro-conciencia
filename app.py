@@ -159,7 +159,7 @@ else:
                 )
                 reflexion = generar_reflexion(prompt_ia)
 
-                st.subheader("🧠 Reflexión para ti, gracias German")
+                st.subheader("🧠 Reflexión para ti inspirado por German")
                 st.write(reflexion)
 
     elif seccion == "Historial":
