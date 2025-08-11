@@ -1,8 +1,7 @@
 streamlit
+sqlalchemy
+psycopg2-binary
 cohere
 PyYAML
 streamlit-authenticator==0.2.3
 streamlit-cookies-manager
-streamlit
-sqlalchemy
-psycopg2-binary
