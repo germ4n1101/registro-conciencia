@@ -4,7 +4,7 @@ from datetime import datetime
 import cohere
 
 # --- CONEXIÓN BASE DE DATOS ---
-engine = create_engine(st.secrets["DB_URL"])
+engine = create_engine(st.secrets["postgresql://postgres:NQY5cSDBXhM2dQiJ@db.fploheqxhzpihgexlrkr.supabase.co:5432/postgres"])
 
 # --- COHERE ---
 co = cohere.Client(st.secrets["cohere"]["api_key"])
