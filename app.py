@@ -1,145 +1,111 @@
 import streamlit as st
-import sqlite3
+import datetime
 import cohere
 import os
-from datetime import datetime
 
-# -------------------------------
-# Configuración página
-# -------------------------------
-st.set_page_config(page_title="Registro de Conciencia", layout="wide")
+# Inicializar Cohere
+co = cohere.Client(os.getenv("COHERE_API_KEY"))  # Usa variable de entorno
 
-# -------------------------------
-# Inicializar base de datos
-# -------------------------------
-def init_db():
-    conn = sqlite3.connect("registro_conciencia.db")
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS entradas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha TEXT,
-            contenido TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
+# Configuración de la página
+st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
 
-init_db()
+# -------------------------
+# Funciones de autenticación
+# -------------------------
+def cargar_usuarios():
+    usuarios = {}
+    if os.path.exists("usuarios.txt"):
+        with open("usuarios.txt", "r", encoding="utf-8") as f:
+            for linea in f:
+                linea = linea.strip()
+                if linea:
+                    user, pwd = linea.split(":", 1)
+                    usuarios[user] = pwd
+    return usuarios
 
-# -------------------------------
-# Conectar a Cohere (manejo seguro)
-# -------------------------------
-cohere_api_key = None
-if "cohere" in st.secrets and "api_key" in st.secrets["cohere"]:
-    cohere_api_key = st.secrets["cohere"]["api_key"]
-elif os.getenv("COHERE_API_KEY"):
-    cohere_api_key = os.getenv("COHERE_API_KEY")
+def guardar_usuario(usuario, clave):
+    with open("usuarios.txt", "a", encoding="utf-8") as f:
+        f.write(f"{usuario}:{clave}\n")
 
-if cohere_api_key:
-    co = cohere.Client(cohere_api_key)
-else:
-    st.warning("⚠️ No se encontró la clave API de Cohere. La IA no estará disponible.")
-    co = None
+# -------------------------
+# Pantalla de autenticación
+# -------------------------
+st.title("🔑 Acceso a Registro de Conciencia")
 
-# -------------------------------
-# Funciones CRUD
-# -------------------------------
-def agregar_entrada(contenido):
-    conn = sqlite3.connect("registro_conciencia.db")
-    c = conn.cursor()
-    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute("INSERT INTO entradas (fecha, contenido) VALUES (?, ?)", (fecha, contenido))
-    conn.commit()
-    conn.close()
+opcion = st.radio("Selecciona una opción:", ["Iniciar Sesión", "Registrarse"])
 
-def obtener_entradas():
-    conn = sqlite3.connect("registro_conciencia.db")
-    c = conn.cursor()
-    c.execute("SELECT * FROM entradas ORDER BY fecha DESC")
-    data = c.fetchall()
-    conn.close()
-    return data
+usuarios = cargar_usuarios()
 
-def actualizar_entrada(id, nuevo_contenido):
-    conn = sqlite3.connect("registro_conciencia.db")
-    c = conn.cursor()
-    c.execute("UPDATE entradas SET contenido = ? WHERE id = ?", (nuevo_contenido, id))
-    conn.commit()
-    conn.close()
+usuario = st.text_input("Usuario")
+clave = st.text_input("Contraseña", type="password")
 
-def eliminar_entrada(id):
-    conn = sqlite3.connect("registro_conciencia.db")
-    c = conn.cursor()
-    c.execute("DELETE FROM entradas WHERE id = ?", (id,))
-    conn.commit()
-    conn.close()
-
-# -------------------------------
-# Función para generar reflexión
-# -------------------------------
-def generar_reflexion(prompt):
-    if not prompt.strip():
-        return "No se puede generar una reflexión sin contenido."
-    if not co:
-        return "⚠️ IA no disponible. Falta clave API de Cohere."
-    try:
-        response = co.chat(model="command-nightly", message=prompt)
-        return response.text.strip()
-    except Exception as e:
-        return f"⚠️ Error al generar reflexión: {e}"
-
-# -------------------------------
-# Interfaz
-# -------------------------------
-st.title("📖 Registro de Conciencia")
-
-tab1, tab2 = st.tabs(["➕ Nueva entrada", "📜 Historial"])
-
-# --- Nueva entrada ---
-with tab1:
-    contenido = st.text_area("Escribe tu entrada de conciencia", height=200)
-
-    if st.button("Guardar entrada"):
-        if contenido.strip():
-            agregar_entrada(contenido)
-            st.success("✅ Entrada guardada correctamente.")
+if opcion == "Registrarse":
+    if st.button("Crear cuenta"):
+        if usuario in usuarios:
+            st.error("⚠️ El usuario ya existe.")
+        elif not usuario or not clave:
+            st.warning("Por favor, completa todos los campos.")
         else:
-            st.warning("⚠️ El contenido no puede estar vacío.")
+            guardar_usuario(usuario, clave)
+            st.success("✅ Usuario registrado. Ahora puedes iniciar sesión.")
 
-    if st.button("Generar reflexión con IA"):
-        if contenido.strip():
-            reflexion = generar_reflexion(contenido)
-            st.text_area("Reflexión generada", reflexion, height=200)
+elif opcion == "Iniciar Sesión":
+    if st.button("Entrar"):
+        if usuario in usuarios and usuarios[usuario] == clave:
+            st.session_state["autenticado"] = usuario
+            st.success(f"Bienvenido, {usuario}")
         else:
-            st.warning("⚠️ Escribe algo para que la IA pueda generar una reflexión.")
+            st.error("⚠️ Usuario o contraseña incorrectos.")
 
-# --- Historial ---
-with tab2:
-    entradas = obtener_entradas()
-    
-    search_term = st.text_input("🔍 Buscar en historial")
-    if search_term:
-        entradas = [e for e in entradas if search_term.lower() in e[2].lower()]
+# -------------------------
+# Formulario de preguntas
+# -------------------------
+if "autenticado" in st.session_state:
+    st.title("🧘 Registro de Conciencia")
+    st.markdown("Responde las siguientes preguntas para registrar tu estado y generar una reflexión.")
 
-    items_per_page = 5
-    total_pages = (len(entradas) - 1) // items_per_page + 1
-    page = st.number_input("Página", min_value=1, max_value=total_pages, step=1)
+    estado_animo = st.text_input("1. ¿Cómo te sientes hoy?")
+    situacion = st.text_input("2. ¿Qué ha estado ocupando tus pensamientos últimamente?")
+    agradecimiento = st.text_input("3. ¿Qué agradeces hoy?")
+    meta = st.text_input("4. ¿Qué te gustaría lograr o mejorar?")
 
-    start = (page - 1) * items_per_page
-    end = start + items_per_page
+    if st.button("Guardar y reflexionar"):
+        if not any([estado_animo, situacion, agradecimiento, meta]):
+            st.warning("Por favor responde al menos una pregunta.")
+        else:
+            fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            entrada = f"""
+Fecha: {fecha}
+Usuario: {st.session_state['autenticado']}
+Estado de ánimo: {estado_animo}
+Situación actual: {situacion}
+Agradecimiento: {agradecimiento}
+Meta: {meta}
+"""
+            with open("registro_conciencia.txt", "a", encoding="utf-8") as archivo:
+                archivo.write(entrada + "\n" + "-"*40 + "\n")
 
-    for id, fecha, contenido in entradas[start:end]:
-        with st.expander(f"{fecha} - {contenido[:50]}..."):
-            nuevo_texto = st.text_area(f"Editar entrada {id}", contenido, key=f"edit_{id}")
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("💾 Guardar cambios", key=f"save_{id}"):
-                    actualizar_entrada(id, nuevo_texto)
-                    st.success("✅ Entrada actualizada.")
-            with col2:
-                if st.button("🗑 Eliminar", key=f"delete_{id}"):
-                    eliminar_entrada(id)
-                    st.warning("❌ Entrada eliminada.")
+            st.success("✅ Entrada guardada y analizada por la IA.")
+
+            try:
+                prompt_ia = (
+                    f"Soy una persona reflexiva. Hoy escribí:\n\n"
+                    f"Estado de ánimo: {estado_animo}\n"
+                    f"Situación actual: {situacion}\n"
+                    f"Agradecimiento: {agradecimiento}\n"
+                    f"Meta: {meta}\n\n"
+                    f"Por favor genera una reflexión amable, positiva y consciente basada en esta información."
+                )
+
+                respuesta = co.chat(
+                    model="command-nightly",
+                    message=prompt_ia
+                )
+
+                st.subheader("🧠 Reflexión de la IA")
+                st.write(respuesta.text)
+
+            except Exception as e:
+                st.error(f"⚠️ Error con la IA: {e}")
 
 
