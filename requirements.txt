@@ -2,3 +2,7 @@ streamlit
 sqlalchemy
 psycopg2-binary
 bcrypt
+werkzeug
+sqlalchemy
+cohere
+psycopg2-binary
