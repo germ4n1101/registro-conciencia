@@ -12,14 +12,14 @@ st.set_page_config(page_title="Registro de Conciencia (ligero)", layout="centere
 # -------------------------
 # Cargar secrets / fallback
 # -------------------------
-SUPABASE_URL = st.secrets.get("SUPABASE_URL") if "SUPABASE_URL" in st.secrets else os.getenv("SUPABASE_URL")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY") if "SUPABASE_KEY" in st.secrets else os.getenv("SUPABASE_KEY")
+DB_URL = st.secrets.get("DB_URL") if "DB_URL" in st.secrets else os.getenv("DB_URL")
+api_key = st.secrets.get("api_key") if "api_key" in st.secrets else os.getenv("api_key")
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("⚠️ Falta SUPABASE_URL o SUPABASE_KEY en secrets (Streamlit Cloud) o variables de entorno.")
+if not DB_URL or not api_key:
+    st.error("⚠️ Falta DB_URL o api_key en secrets (Streamlit Cloud) o variables de entorno.")
     st.stop()
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = create_client(DB_URL, api_key)
 
 # -------------------------
 # Utilidades
