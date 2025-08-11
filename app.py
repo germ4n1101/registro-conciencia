@@ -1,117 +1,119 @@
 import streamlit as st
+from sqlalchemy import create_engine, text
+from datetime import datetime
 import cohere
-import datetime
-from sqlalchemy import create_engine, Table, Column, Integer, String, Text, MetaData, DateTime
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import sessionmaker
-from werkzeug.security import generate_password_hash, check_password_hash
 
-# =========================
-# Conexión a la base de datos
-# =========================
-DB_URL = st.secrets["DB_URL"]
-engine = create_engine(DB_URL)
-metadata = MetaData()
+# --- CONEXIÓN BASE DE DATOS ---
+engine = create_engine(st.secrets["DB_URL"])
 
-# Tabla de usuarios
-users_table = Table(
-    "usuarios", metadata,
-    Column("id", Integer, primary_key=True),
-    Column("username", String, unique=True, nullable=False),
-    Column("password", String, nullable=False)
-)
+# --- COHERE ---
+co = cohere.Client(st.secrets["cohere"]["api_key"])
 
-# Tabla de reflexiones
-reflexiones_table = Table(
-    "reflexiones", metadata,
-    Column("id", Integer, primary_key=True),
-    Column("username", String, nullable=False),
-    Column("fecha", DateTime, default=datetime.datetime.utcnow),
-    Column("texto", Text, nullable=False)
-)
+# --- CREAR TABLAS SI NO EXISTEN ---
+def inicializar_bd():
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(100) UNIQUE NOT NULL,
+                password VARCHAR(100) NOT NULL
+            );
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS registros_conciencia (
+                id SERIAL PRIMARY KEY,
+                usuario VARCHAR(100) NOT NULL,
+                fecha TIMESTAMP DEFAULT NOW(),
+                reflexion TEXT
+            );
+        """))
+        conn.commit()
 
-# Crear tablas si no existen
-metadata.create_all(engine)
+inicializar_bd()
 
-Session = sessionmaker(bind=engine)
-session_db = Session()
-
-# =========================
-# Funciones de base de datos
-# =========================
+# --- FUNCIONES DE USUARIOS ---
 def registrar_usuario(username, password):
-    hashed_password = generate_password_hash(password)
-    try:
-        ins = users_table.insert().values(username=username, password=hashed_password)
-        engine.execute(ins)
-        return True
-    except SQLAlchemyError:
-        return False
+    with engine.connect() as conn:
+        conn.execute(text("INSERT INTO usuarios (username, password) VALUES (:u, :p)"),
+                     {"u": username, "p": password})
+        conn.commit()
 
-def verificar_usuario(username, password):
-    sel = users_table.select().where(users_table.c.username == username)
-    result = engine.execute(sel).fetchone()
-    if result and check_password_hash(result["password"], password):
-        return True
-    return False
+def validar_login(username, password):
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT * FROM usuarios WHERE username=:u AND password=:p"),
+                              {"u": username, "p": password}).fetchone()
+        return result is not None
 
-def guardar_reflexion(username, texto):
-    ins = reflexiones_table.insert().values(username=username, texto=texto, fecha=datetime.datetime.now())
-    engine.execute(ins)
+# --- FUNCIONES DE REFLEXIONES ---
+def guardar_reflexion(usuario, reflexion):
+    with engine.connect() as conn:
+        conn.execute(
+            text("INSERT INTO registros_conciencia (usuario, fecha, reflexion) VALUES (:u, :f, :r)"),
+            {"u": usuario, "f": datetime.now(), "r": reflexion}
+        )
+        conn.commit()
 
-def obtener_reflexiones(username):
-    sel = reflexiones_table.select().where(reflexiones_table.c.username == username).order_by(reflexiones_table.c.fecha.desc())
-    return engine.execute(sel).fetchall()
+def obtener_reflexiones(usuario):
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT fecha, reflexion FROM registros_conciencia WHERE usuario=:u ORDER BY fecha DESC"),
+            {"u": usuario}
+        ).fetchall()
+    return result
 
-# =========================
-# Cohere Config
-# =========================
-co = cohere.Client(st.secrets["COHERE_API_KEY"])
-
-def generar_reflexion(texto_usuario):
-    response = co.generate(
-        model="command",
-        prompt=f"Genera una reflexión breve y motivadora basada en: {texto_usuario}",
-        max_tokens=100
-    )
-    return response.generations[0].text.strip()
-
-# =========================
-# Interfaz Streamlit
-# =========================
+# --- INTERFAZ STREAMLIT ---
 st.title("🧠 Registro de Conciencia")
 
-menu = ["Login", "Registro"]
-choice = st.sidebar.selectbox("Menú", menu)
+if "usuario" not in st.session_state:
+    st.session_state.usuario = None
 
-if choice == "Registro":
-    st.subheader("Crear nueva cuenta")
-    username = st.text_input("Usuario")
-    password = st.text_input("Contraseña", type="password")
-    if st.button("Registrar"):
-        if registrar_usuario(username, password):
-            st.success("Usuario registrado exitosamente")
-        else:
-            st.error("El usuario ya existe o hubo un error")
+if st.session_state.usuario is None:
+    menu = st.sidebar.radio("Menú", ["Login", "Registro"])
 
-elif choice == "Login":
-    st.subheader("Iniciar sesión")
-    username = st.text_input("Usuario")
-    password = st.text_input("Contraseña", type="password")
+    if menu == "Login":
+        st.subheader("Iniciar Sesión")
+        user = st.text_input("Usuario")
+        pwd = st.text_input("Contraseña", type="password")
+        if st.button("Entrar"):
+            if validar_login(user, pwd):
+                st.session_state.usuario = user
+                st.success(f"Bienvenido {user}")
+            else:
+                st.error("Usuario o contraseña incorrectos")
 
-    if st.button("Login"):
-        if verificar_usuario(username, password):
-            st.success(f"Bienvenido {username}")
+    elif menu == "Registro":
+        st.subheader("Crear Cuenta")
+        user = st.text_input("Usuario nuevo")
+        pwd = st.text_input("Contraseña", type="password")
+        if st.button("Registrar"):
+            try:
+                registrar_usuario(user, pwd)
+                st.success("Usuario registrado correctamente, ahora inicia sesión.")
+            except:
+                st.error("Ese usuario ya existe.")
 
-            texto_usuario = st.text_area("Escribe algo para reflexionar")
-            if st.button("Generar reflexión"):
-                reflexion = generar_reflexion(texto_usuario)
-                guardar_reflexion(username, reflexion)
-                st.success(f"Reflexión generada: {reflexion}")
+else:
+    st.sidebar.success(f"Usuario: {st.session_state.usuario}")
+    if st.sidebar.button("Cerrar sesión"):
+        st.session_state.usuario = None
+        st.experimental_rerun()
 
-            st.subheader("📜 Historial de Reflexiones")
-            for r in obtener_reflexiones(username):
-                st.write(f"{r['fecha'].strftime('%Y-%m-%d %H:%M:%S')} - {r['texto']}")
+    st.subheader("Nueva Reflexión")
+    reflexion = st.text_area("Escribe tu reflexión aquí")
 
-        else:
-            st.error("Usuario o contraseña incorrectos")
+    if st.button("Guardar Reflexión"):
+        guardar_reflexion(st.session_state.usuario, reflexion)
+        st.success("Reflexión guardada ✅")
+
+    if st.button("Generar con Cohere"):
+        prompt = "Escribe una breve reflexión positiva para el día de hoy."
+        respuesta = co.generate(model="command", prompt=prompt, max_tokens=50)
+        reflexion_auto = respuesta.generations[0].text.strip()
+        guardar_reflexion(st.session_state.usuario, reflexion_auto)
+        st.success("Reflexión generada y guardada ✅")
+        st.write(reflexion_auto)
+
+    st.subheader("Historial de Reflexiones")
+    registros = obtener_reflexiones(st.session_state.usuario)
+    for fecha, texto in registros:
+        st.markdown(f"**{fecha.strftime('%Y-%m-%d %H:%M')}**: {texto}")
