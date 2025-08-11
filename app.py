@@ -1,111 +1,93 @@
 import streamlit as st
-import datetime
-import cohere
-import os
+from supabase import create_client
+import pandas as pd
+from st_aggrid import AgGrid, GridOptionsBuilder
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# Inicializar Cohere
-co = cohere.Client(os.getenv("api_key"))  # Usa variable de entorno
+# ===== CONFIGURACIÓN SUPABASE =====
+DB_URL = st.secrets["DB_URL"]
+DB_KEY = st.secrets["DB_KEY"]
+supabase = create_client(DB_URL, DB_KEY)
 
-# Configuración de la página
-st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
+st.set_page_config(page_title="Registro de Conciencia - CRUD Supabase", layout="wide")
 
-# -------------------------
-# Funciones de autenticación
-# -------------------------
-def cargar_usuarios():
-    usuarios = {}
-    if os.path.exists("usuarios.txt"):
-        with open("usuarios.txt", "r", encoding="utf-8") as f:
-            for linea in f:
-                linea = linea.strip()
-                if linea:
-                    user, pwd = linea.split(":", 1)
-                    usuarios[user] = pwd
-    return usuarios
+# ===== FUNCIONES DE USUARIO =====
+def registrar_usuario(username, password):
+    hashed_pw = generate_password_hash(password)
+    data, _ = supabase.table("usuarios").insert({"username": username, "password": hashed_pw}).execute()
+    return data
 
-def guardar_usuario(usuario, clave):
-    with open("usuarios.txt", "a", encoding="utf-8") as f:
-        f.write(f"{usuario}:{clave}\n")
+def verificar_usuario(username, password):
+    result = supabase.table("usuarios").select("*").eq("username", username).execute()
+    if result.data:
+        stored_pw = result.data[0]["password"]
+        return check_password_hash(stored_pw, password)
+    return False
 
-# -------------------------
-# Pantalla de autenticación
-# -------------------------
-st.title("🔑 Acceso a Registro de Conciencia")
+# ===== FUNCIONES CRUD PREGUNTAS =====
+def insertar_pregunta(usuario, pregunta):
+    supabase.table("preguntas").insert({"usuario": usuario, "pregunta": pregunta}).execute()
 
-opcion = st.radio("Selecciona una opción:", ["Iniciar Sesión", "Registrarse"])
+def obtener_preguntas(usuario):
+    result = supabase.table("preguntas").select("*").eq("usuario", usuario).execute()
+    return pd.DataFrame(result.data) if result.data else pd.DataFrame(columns=["id", "usuario", "pregunta"])
 
-usuarios = cargar_usuarios()
+# ===== LOGIN / REGISTRO =====
+if "usuario" not in st.session_state:
+    st.session_state.usuario = None
 
-usuario = st.text_input("Usuario")
-clave = st.text_input("Contraseña", type="password")
+if st.session_state.usuario is None:
+    st.subheader("Inicia sesión o regístrate")
 
-if opcion == "Registrarse":
-    if st.button("Crear cuenta"):
-        if usuario in usuarios:
-            st.error("⚠️ El usuario ya existe.")
-        elif not usuario or not clave:
-            st.warning("Por favor, completa todos los campos.")
+    tab_login, tab_registro = st.tabs(["🔑 Iniciar Sesión", "🆕 Registrarse"])
+
+    with tab_login:
+        username = st.text_input("Usuario", key="login_user")
+        password = st.text_input("Contraseña", type="password", key="login_pw")
+        if st.button("Ingresar"):
+            if verificar_usuario(username, password):
+                st.session_state.usuario = username
+                st.success("✅ Inicio de sesión exitoso")
+                st.experimental_rerun()
+            else:
+                st.error("❌ Usuario o contraseña incorrectos")
+
+    with tab_registro:
+        new_user = st.text_input("Nuevo usuario", key="reg_user")
+        new_pw = st.text_input("Nueva contraseña", type="password", key="reg_pw")
+        if st.button("Registrarme"):
+            if new_user and new_pw:
+                registrar_usuario(new_user, new_pw)
+                st.success("✅ Usuario registrado, ahora inicia sesión")
+            else:
+                st.warning("Por favor llena todos los campos")
+
+else:
+    st.title(f"Registro de Conciencia - Bienvenido {st.session_state.usuario}")
+
+    # Formulario para agregar preguntas
+    pregunta = st.text_input("Escribe tu pregunta o reflexión")
+    if st.button("Guardar"):
+        if pregunta:
+            insertar_pregunta(st.session_state.usuario, pregunta)
+            st.success("✅ Pregunta guardada")
         else:
-            guardar_usuario(usuario, clave)
-            st.success("✅ Usuario registrado. Ahora puedes iniciar sesión.")
+            st.warning("Por favor escribe algo antes de guardar")
 
-elif opcion == "Iniciar Sesión":
-    if st.button("Entrar"):
-        if usuario in usuarios and usuarios[usuario] == clave:
-            st.session_state["autenticado"] = usuario
-            st.success(f"Bienvenido, {usuario}")
-        else:
-            st.error("⚠️ Usuario o contraseña incorrectos.")
+    # Mostrar preguntas con tabla interactiva
+    df = obtener_preguntas(st.session_state.usuario)
 
-# -------------------------
-# Formulario de preguntas
-# -------------------------
-if "autenticado" in st.session_state:
-    st.title("🧘 Registro de Conciencia")
-    st.markdown("Responde las siguientes preguntas para registrar tu estado y generar una reflexión.")
+    if not df.empty:
+        gb = GridOptionsBuilder.from_dataframe(df)
+        gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=5)
+        gb.configure_default_column(filter=True, sortable=True, resizable=True)
+        grid_options = gb.build()
+        AgGrid(df, gridOptions=grid_options, height=300)
+    else:
+        st.info("No hay preguntas registradas aún.")
 
-    estado_animo = st.text_input("1. ¿Cómo te sientes hoy?")
-    situacion = st.text_input("2. ¿Qué ha estado ocupando tus pensamientos últimamente?")
-    agradecimiento = st.text_input("3. ¿Qué agradeces hoy?")
-    meta = st.text_input("4. ¿Qué te gustaría lograr o mejorar?")
-
-    if st.button("Guardar y reflexionar"):
-        if not any([estado_animo, situacion, agradecimiento, meta]):
-            st.warning("Por favor responde al menos una pregunta.")
-        else:
-            fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            entrada = f"""
-Fecha: {fecha}
-Usuario: {st.session_state['autenticado']}
-Estado de ánimo: {estado_animo}
-Situación actual: {situacion}
-Agradecimiento: {agradecimiento}
-Meta: {meta}
-"""
-            with open("registro_conciencia.txt", "a", encoding="utf-8") as archivo:
-                archivo.write(entrada + "\n" + "-"*40 + "\n")
-
-            st.success("✅ Entrada guardada y analizada por la IA.")
-
-            try:
-                prompt_ia = (
-                    f"Soy una persona reflexiva. Hoy escribí:\n\n"
-                    f"Estado de ánimo: {estado_animo}\n"
-                    f"Situación actual: {situacion}\n"
-                    f"Agradecimiento: {agradecimiento}\n"
-                    f"Meta: {meta}\n\n"
-                    f"Por favor genera una reflexión amable, positiva y consciente basada en esta información."
-                )
-
-                respuesta = co.chat(
-                    model="command-nightly",
-                    message=prompt_ia
-                )
-
-                st.subheader("🧠 Reflexión de la IA")
-                st.write(respuesta.text)
-
-            except Exception as e:
-                st.error(f"⚠️ Error con la IA: {e}")
+    if st.button("Cerrar sesión"):
+        st.session_state.usuario = None
+        st.experimental_rerun()
 
 
