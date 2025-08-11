@@ -4,7 +4,7 @@ import cohere
 import os
 
 # Inicializar Cohere
-co = cohere.Client(os.getenv("COHERE_API_KEY"))  # Usa variable de entorno
+co = cohere.Client(os.getenv("api_key"))  # Usa variable de entorno
 
 # Configuración de la página
 st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
