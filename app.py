@@ -1,99 +1,82 @@
 import streamlit as st
-import pandas as pd
-from sqlalchemy import create_engine, text
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+from supabase import create_client
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime
 
-# -------------------------
-# CONFIGURACIÓN APP
-# -------------------------
-st.set_page_config(page_title="Registro de Conciencia", layout="wide")
-st.title("📜 Registro de Conciencia - CRUD Supabase")
+# 🔗 Conexión a Supabase
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# -------------------------
-# CONEXIÓN A BASE DE DATOS
-# -------------------------
-DB_URL = st.secrets["DB_URL"]  # Guardado en secrets.toml
-engine = create_engine(DB_URL)
+st.set_page_config(page_title="🧠 Registro de Conciencia", page_icon="🧠", layout="centered")
 
-# -------------------------
-# FUNCIONES
-# -------------------------
-@st.cache_data(ttl=60)
-def cargar_datos():
-    query = "SELECT * FROM registros ORDER BY fecha DESC"
-    return pd.read_sql(query, engine)
+# 📌 Funciones de usuario
+def register_user(username, password):
+    hashed_pw = generate_password_hash(password)
+    existing = supabase.table("users").select("*").eq("username", username).execute()
+    if existing.data:
+        return False, "❌ El usuario ya existe."
+    supabase.table("users").insert({"username": username, "password": hashed_pw}).execute()
+    return True, "✅ Usuario registrado."
 
-def agregar_registro(usuario, fecha, texto):
-    with engine.begin() as conn:
-        conn.execute(
-            text("INSERT INTO registros (usuario, fecha, texto) VALUES (:u, :f, :t)"),
-            {"u": usuario, "f": fecha, "t": texto}
-        )
+def login_user(username, password):
+    result = supabase.table("users").select("*").eq("username", username).execute()
+    if not result.data:
+        return False, "❌ Usuario no encontrado."
+    user = result.data[0]
+    if check_password_hash(user["password"], password):
+        return True, user
+    return False, "❌ Contraseña incorrecta."
 
-def eliminar_registro(id_registro):
-    with engine.begin() as conn:
-        conn.execute(text("DELETE FROM registros WHERE id = :id"), {"id": id_registro})
+def save_reflection(user_id, text):
+    supabase.table("reflections").insert({
+        "user_id": user_id,
+        "text": text,
+        "created_at": datetime.now().isoformat()
+    }).execute()
 
-# -------------------------
-# FORMULARIO PARA NUEVO REGISTRO
-# -------------------------
-st.subheader("➕ Agregar nuevo registro")
-with st.form("nuevo_registro"):
-    col1, col2 = st.columns(2)
-    with col1:
-        usuario = st.text_input("👤 Usuario")
-    with col2:
-        fecha = st.date_input("📅 Fecha")
-    texto = st.text_area("📝 Texto del registro")
-    
-    submitted = st.form_submit_button("Guardar")
-    if submitted:
-        if usuario and fecha and texto:
-            agregar_registro(usuario, fecha, texto)
-            st.success("Registro agregado correctamente ✅")
-            st.cache_data.clear()
+def get_reflections(user_id):
+    return supabase.table("reflections").select("*").eq("user_id", user_id).order("created_at", desc=True).execute().data
+
+# 📌 Menú lateral
+menu = st.sidebar.selectbox("Menú", ["Registro", "Login", "Reflexiones"])
+
+if menu == "Registro":
+    st.subheader("Crear cuenta")
+    new_user = st.text_input("Usuario")
+    new_password = st.text_input("Contraseña", type="password")
+    if st.button("Registrar"):
+        ok, msg = register_user(new_user, new_password)
+        st.success(msg) if ok else st.error(msg)
+
+elif menu == "Login":
+    st.subheader("Iniciar sesión")
+    username = st.text_input("Usuario")
+    password = st.text_input("Contraseña", type="password")
+    if st.button("Entrar"):
+        ok, data = login_user(username, password)
+        if ok:
+            st.session_state["logged_in"] = True
+            st.session_state["user"] = data
+            st.success(f"✅ Bienvenido {data['username']}")
         else:
-            st.error("⚠️ Todos los campos son obligatorios.")
+            st.error(data)
 
-# -------------------------
-# MOSTRAR TABLA DE REGISTROS
-# -------------------------
-st.subheader("📂 Lista de registros")
+elif menu == "Reflexiones":
+    if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
+        st.warning("⚠️ Debes iniciar sesión primero.")
+    else:
+        st.subheader("✏️ Nueva reflexión")
+        reflection = st.text_area("Escribe tu reflexión aquí...")
+        if st.button("Guardar reflexión"):
+            save_reflection(st.session_state["user"]["id"], reflection)
+            st.success("✅ Reflexión guardada.")
 
-df = cargar_datos()
+        st.subheader("📜 Historial de reflexiones")
+        reflections = get_reflections(st.session_state["user"]["id"])
+        if reflections:
+            for r in reflections:
+                st.markdown(f"**{r['created_at']}** — {r['text']}")
+        else:
+            st.info("Aún no tienes reflexiones guardadas.")
 
-# Búsqueda global
-busqueda = st.text_input("🔍 Buscar", "")
-if busqueda:
-    busqueda_lower = busqueda.lower()
-    df = df[df.apply(lambda fila: fila.astype(str).str.lower().str.contains(busqueda_lower).any(), axis=1)]
-
-if df.empty:
-    st.warning("No hay registros que coincidan.")
-else:
-    gb = GridOptionsBuilder.from_dataframe(df)
-    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
-    gb.configure_side_bar()
-    gb.configure_default_column(
-        editable=False, groupable=True, filter=True, sortable=True, resizable=True
-    )
-    gb.configure_selection('single', use_checkbox=True)
-    grid_options = gb.build()
-
-    grid_response = AgGrid(
-        df,
-        gridOptions=grid_options,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
-        fit_columns_on_grid_load=True,
-        enable_enterprise_modules=False,
-        theme="alpine",
-        height=500
-    )
-
-    # Eliminar registro seleccionado
-    if grid_response["selected_rows"]:
-        id_seleccionado = grid_response["selected_rows"][0]["id"]
-        if st.button("🗑 Eliminar registro seleccionado"):
-            eliminar_registro(id_seleccionado)
-            st.success("Registro eliminado ✅")
-            st.cache_data.clear()
