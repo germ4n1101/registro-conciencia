@@ -1,119 +1,145 @@
 import streamlit as st
-from sqlalchemy import create_engine, text
-from datetime import datetime
+import sqlite3
 import cohere
+import os
+from datetime import datetime
 
-# --- CONEXIÓN BASE DE DATOS ---
-engine = create_engine(st.secrets["DB_URL"])
+# -------------------------------
+# Configuración página
+# -------------------------------
+st.set_page_config(page_title="Registro de Conciencia", layout="wide")
 
-# --- COHERE ---
-co = cohere.Client(st.secrets["cohere"]["api_key"])
-
-# --- CREAR TABLAS SI NO EXISTEN ---
-def inicializar_bd():
-    with engine.connect() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS usuarios (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(100) UNIQUE NOT NULL,
-                password VARCHAR(100) NOT NULL
-            );
-        """))
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS registros_conciencia (
-                id SERIAL PRIMARY KEY,
-                usuario VARCHAR(100) NOT NULL,
-                fecha TIMESTAMP DEFAULT NOW(),
-                reflexion TEXT
-            );
-        """))
-        conn.commit()
-
-inicializar_bd()
-
-# --- FUNCIONES DE USUARIOS ---
-def registrar_usuario(username, password):
-    with engine.connect() as conn:
-        conn.execute(text("INSERT INTO usuarios (username, password) VALUES (:u, :p)"),
-                     {"u": username, "p": password})
-        conn.commit()
-
-def validar_login(username, password):
-    with engine.connect() as conn:
-        result = conn.execute(text("SELECT * FROM usuarios WHERE username=:u AND password=:p"),
-                              {"u": username, "p": password}).fetchone()
-        return result is not None
-
-# --- FUNCIONES DE REFLEXIONES ---
-def guardar_reflexion(usuario, reflexion):
-    with engine.connect() as conn:
-        conn.execute(
-            text("INSERT INTO registros_conciencia (usuario, fecha, reflexion) VALUES (:u, :f, :r)"),
-            {"u": usuario, "f": datetime.now(), "r": reflexion}
+# -------------------------------
+# Inicializar base de datos
+# -------------------------------
+def init_db():
+    conn = sqlite3.connect("registro_conciencia.db")
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS entradas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha TEXT,
+            contenido TEXT
         )
-        conn.commit()
+    """)
+    conn.commit()
+    conn.close()
 
-def obtener_reflexiones(usuario):
-    with engine.connect() as conn:
-        result = conn.execute(
-            text("SELECT fecha, reflexion FROM registros_conciencia WHERE usuario=:u ORDER BY fecha DESC"),
-            {"u": usuario}
-        ).fetchall()
-    return result
+init_db()
 
-# --- INTERFAZ STREAMLIT ---
-st.title("🧠 Registro de Conciencia")
+# -------------------------------
+# Conectar a Cohere (manejo seguro)
+# -------------------------------
+cohere_api_key = None
+if "cohere" in st.secrets and "api_key" in st.secrets["cohere"]:
+    cohere_api_key = st.secrets["cohere"]["api_key"]
+elif os.getenv("COHERE_API_KEY"):
+    cohere_api_key = os.getenv("COHERE_API_KEY")
 
-if "usuario" not in st.session_state:
-    st.session_state.usuario = None
-
-if st.session_state.usuario is None:
-    menu = st.sidebar.radio("Menú", ["Login", "Registro"])
-
-    if menu == "Login":
-        st.subheader("Iniciar Sesión")
-        user = st.text_input("Usuario")
-        pwd = st.text_input("Contraseña", type="password")
-        if st.button("Entrar"):
-            if validar_login(user, pwd):
-                st.session_state.usuario = user
-                st.success(f"Bienvenido {user}")
-            else:
-                st.error("Usuario o contraseña incorrectos")
-
-    elif menu == "Registro":
-        st.subheader("Crear Cuenta")
-        user = st.text_input("Usuario nuevo")
-        pwd = st.text_input("Contraseña", type="password")
-        if st.button("Registrar"):
-            try:
-                registrar_usuario(user, pwd)
-                st.success("Usuario registrado correctamente, ahora inicia sesión.")
-            except:
-                st.error("Ese usuario ya existe.")
-
+if cohere_api_key:
+    co = cohere.Client(cohere_api_key)
 else:
-    st.sidebar.success(f"Usuario: {st.session_state.usuario}")
-    if st.sidebar.button("Cerrar sesión"):
-        st.session_state.usuario = None
-        st.experimental_rerun()
+    st.warning("⚠️ No se encontró la clave API de Cohere. La IA no estará disponible.")
+    co = None
 
-    st.subheader("Nueva Reflexión")
-    reflexion = st.text_area("Escribe tu reflexión aquí")
+# -------------------------------
+# Funciones CRUD
+# -------------------------------
+def agregar_entrada(contenido):
+    conn = sqlite3.connect("registro_conciencia.db")
+    c = conn.cursor()
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    c.execute("INSERT INTO entradas (fecha, contenido) VALUES (?, ?)", (fecha, contenido))
+    conn.commit()
+    conn.close()
 
-    if st.button("Guardar Reflexión"):
-        guardar_reflexion(st.session_state.usuario, reflexion)
-        st.success("Reflexión guardada ✅")
+def obtener_entradas():
+    conn = sqlite3.connect("registro_conciencia.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM entradas ORDER BY fecha DESC")
+    data = c.fetchall()
+    conn.close()
+    return data
 
-    if st.button("Generar con Cohere"):
-        prompt = "Escribe una breve reflexión positiva para el día de hoy."
-        respuesta = co.generate(model="command", prompt=prompt, max_tokens=50)
-        reflexion_auto = respuesta.generations[0].text.strip()
-        guardar_reflexion(st.session_state.usuario, reflexion_auto)
-        st.success("Reflexión generada y guardada ✅")
-        st.write(reflexion_auto)
+def actualizar_entrada(id, nuevo_contenido):
+    conn = sqlite3.connect("registro_conciencia.db")
+    c = conn.cursor()
+    c.execute("UPDATE entradas SET contenido = ? WHERE id = ?", (nuevo_contenido, id))
+    conn.commit()
+    conn.close()
 
-    st.subheader("Historial de Reflexiones")
-    registros = obtener_reflexiones(st.session_state.usuario)
-    for fecha, texto in registros:
-        st.markdown(f"**{fecha.strftime('%Y-%m-%d %H:%M')}**: {texto}")
+def eliminar_entrada(id):
+    conn = sqlite3.connect("registro_conciencia.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM entradas WHERE id = ?", (id,))
+    conn.commit()
+    conn.close()
+
+# -------------------------------
+# Función para generar reflexión
+# -------------------------------
+def generar_reflexion(prompt):
+    if not prompt.strip():
+        return "No se puede generar una reflexión sin contenido."
+    if not co:
+        return "⚠️ IA no disponible. Falta clave API de Cohere."
+    try:
+        response = co.chat(model="command-nightly", message=prompt)
+        return response.text.strip()
+    except Exception as e:
+        return f"⚠️ Error al generar reflexión: {e}"
+
+# -------------------------------
+# Interfaz
+# -------------------------------
+st.title("📖 Registro de Conciencia")
+
+tab1, tab2 = st.tabs(["➕ Nueva entrada", "📜 Historial"])
+
+# --- Nueva entrada ---
+with tab1:
+    contenido = st.text_area("Escribe tu entrada de conciencia", height=200)
+
+    if st.button("Guardar entrada"):
+        if contenido.strip():
+            agregar_entrada(contenido)
+            st.success("✅ Entrada guardada correctamente.")
+        else:
+            st.warning("⚠️ El contenido no puede estar vacío.")
+
+    if st.button("Generar reflexión con IA"):
+        if contenido.strip():
+            reflexion = generar_reflexion(contenido)
+            st.text_area("Reflexión generada", reflexion, height=200)
+        else:
+            st.warning("⚠️ Escribe algo para que la IA pueda generar una reflexión.")
+
+# --- Historial ---
+with tab2:
+    entradas = obtener_entradas()
+    
+    search_term = st.text_input("🔍 Buscar en historial")
+    if search_term:
+        entradas = [e for e in entradas if search_term.lower() in e[2].lower()]
+
+    items_per_page = 5
+    total_pages = (len(entradas) - 1) // items_per_page + 1
+    page = st.number_input("Página", min_value=1, max_value=total_pages, step=1)
+
+    start = (page - 1) * items_per_page
+    end = start + items_per_page
+
+    for id, fecha, contenido in entradas[start:end]:
+        with st.expander(f"{fecha} - {contenido[:50]}..."):
+            nuevo_texto = st.text_area(f"Editar entrada {id}", contenido, key=f"edit_{id}")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("💾 Guardar cambios", key=f"save_{id}"):
+                    actualizar_entrada(id, nuevo_texto)
+                    st.success("✅ Entrada actualizada.")
+            with col2:
+                if st.button("🗑 Eliminar", key=f"delete_{id}"):
+                    eliminar_entrada(id)
+                    st.warning("❌ Entrada eliminada.")
+
+
