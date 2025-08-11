@@ -1,82 +1,117 @@
 import streamlit as st
-from supabase import create_client
-from werkzeug.security import generate_password_hash, check_password_hash
 import cohere
-from datetime import datetime
+import datetime
+from sqlalchemy import create_engine, Table, Column, Integer, String, Text, MetaData, DateTime
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import sessionmaker
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# --- Cargar secretos ---
+# =========================
+# Conexión a la base de datos
+# =========================
 DB_URL = st.secrets["DB_URL"]
-DB_KEY = st.secrets["DB_KEY"]  # Debes agregarla en secrets.toml si no la tienes
-COHERE_KEY = st.secrets["cohere"]["api_key"]
+engine = create_engine(DB_URL)
+metadata = MetaData()
 
-# --- Inicializar clientes ---
-supabase = create_client(DB_URL, DB_KEY)
-co = cohere.Client(COHERE_KEY)
+# Tabla de usuarios
+users_table = Table(
+    "usuarios", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("username", String, unique=True, nullable=False),
+    Column("password", String, nullable=False)
+)
 
-st.set_page_config(page_title="Registro de Conciencia", layout="centered")
+# Tabla de reflexiones
+reflexiones_table = Table(
+    "reflexiones", metadata,
+    Column("id", Integer, primary_key=True),
+    Column("username", String, nullable=False),
+    Column("fecha", DateTime, default=datetime.datetime.utcnow),
+    Column("texto", Text, nullable=False)
+)
 
-# --- Funciones ---
+# Crear tablas si no existen
+metadata.create_all(engine)
+
+Session = sessionmaker(bind=engine)
+session_db = Session()
+
+# =========================
+# Funciones de base de datos
+# =========================
 def registrar_usuario(username, password):
-    hashed_pw = generate_password_hash(password)
-    response = supabase.table("usuarios").insert({
-        "username": username,
-        "password": hashed_pw
-    }).execute()
-    return response
+    hashed_password = generate_password_hash(password)
+    try:
+        ins = users_table.insert().values(username=username, password=hashed_password)
+        engine.execute(ins)
+        return True
+    except SQLAlchemyError:
+        return False
 
 def verificar_usuario(username, password):
-    data = supabase.table("usuarios").select("*").eq("username", username).execute()
-    if data.data:
-        hashed_pw = data.data[0]["password"]
-        return check_password_hash(hashed_pw, password)
+    sel = users_table.select().where(users_table.c.username == username)
+    result = engine.execute(sel).fetchone()
+    if result and check_password_hash(result["password"], password):
+        return True
     return False
 
-def guardar_entrada(username, texto):
-    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    supabase.table("entradas").insert({
-        "username": username,
-        "fecha": fecha,
-        "texto": texto
-    }).execute()
+def guardar_reflexion(username, texto):
+    ins = reflexiones_table.insert().values(username=username, texto=texto, fecha=datetime.datetime.now())
+    engine.execute(ins)
 
-def generar_reflexion(texto):
-    prompt = f"Genera una reflexión inspiradora basada en el siguiente texto: {texto}"
+def obtener_reflexiones(username):
+    sel = reflexiones_table.select().where(reflexiones_table.c.username == username).order_by(reflexiones_table.c.fecha.desc())
+    return engine.execute(sel).fetchall()
+
+# =========================
+# Cohere Config
+# =========================
+co = cohere.Client(st.secrets["COHERE_API_KEY"])
+
+def generar_reflexion(texto_usuario):
     response = co.generate(
-        model="command-xlarge",
-        prompt=prompt,
-        max_tokens=80
+        model="command",
+        prompt=f"Genera una reflexión breve y motivadora basada en: {texto_usuario}",
+        max_tokens=100
     )
     return response.generations[0].text.strip()
 
-# --- UI ---
+# =========================
+# Interfaz Streamlit
+# =========================
 st.title("🧠 Registro de Conciencia")
 
-menu = ["Iniciar sesión", "Registrarse"]
+menu = ["Login", "Registro"]
 choice = st.sidebar.selectbox("Menú", menu)
 
-if choice == "Registrarse":
-    st.subheader("Crear cuenta")
-    new_user = st.text_input("Usuario")
-    new_password = st.text_input("Contraseña", type="password")
-    if st.button("Registrar"):
-        registrar_usuario(new_user, new_password)
-        st.success("Usuario registrado con éxito.")
-
-elif choice == "Iniciar sesión":
-    st.subheader("Acceder")
+if choice == "Registro":
+    st.subheader("Crear nueva cuenta")
     username = st.text_input("Usuario")
     password = st.text_input("Contraseña", type="password")
-    if st.button("Entrar"):
+    if st.button("Registrar"):
+        if registrar_usuario(username, password):
+            st.success("Usuario registrado exitosamente")
+        else:
+            st.error("El usuario ya existe o hubo un error")
+
+elif choice == "Login":
+    st.subheader("Iniciar sesión")
+    username = st.text_input("Usuario")
+    password = st.text_input("Contraseña", type="password")
+
+    if st.button("Login"):
         if verificar_usuario(username, password):
-            st.success(f"Bienvenido, {username}")
+            st.success(f"Bienvenido {username}")
 
-            texto = st.text_area("Escribe tu entrada de conciencia")
-            if st.button("Guardar entrada"):
-                guardar_entrada(username, texto)
-                st.success("Entrada guardada.")
-
+            texto_usuario = st.text_area("Escribe algo para reflexionar")
             if st.button("Generar reflexión"):
-                reflexion = generar_reflexion(texto)
-                st.info(reflexion)
+                reflexion = generar_reflexion(texto_usuario)
+                guardar_reflexion(username, reflexion)
+                st.success(f"Reflexión generada: {reflexion}")
+
+            st.subheader("📜 Historial de Reflexiones")
+            for r in obtener_reflexiones(username):
+                st.write(f"{r['fecha'].strftime('%Y-%m-%d %H:%M:%S')} - {r['texto']}")
+
         else:
             st.error("Usuario o contraseña incorrectos")
