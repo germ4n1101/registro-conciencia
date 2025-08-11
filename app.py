@@ -7,7 +7,7 @@ DB_HOST = "db.fploheqxhzpihgexlrkr.supabase.co"
 DB_PORT = "5432"
 DB_NAME = "postgres"
 DB_USER = "postgres"
-DB_PASS = "Ninguna123."  # La copias del panel "Connect"
+DB_PASS = "NQY5cSDBXhM2dQiJ"  # La copias del panel "Connect"
 
 # Crear conexión
 engine = create_engine(f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
