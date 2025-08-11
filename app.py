@@ -66,7 +66,7 @@ def obtener_reflexiones(username):
 # =========================
 # Cohere Config
 # =========================
-co = cohere.Client(st.secrets["COHERE_API_KEY"])
+co = cohere.Client(st.secrets["DB_URL"])
 
 def generar_reflexion(texto_usuario):
     response = co.generate(
