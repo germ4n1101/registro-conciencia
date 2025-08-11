@@ -7,3 +7,7 @@ sqlalchemy
 cohere
 streamlit-aggrid
 pandas
+supabase
+pandas
+Werkzeug
+python-dotenv
