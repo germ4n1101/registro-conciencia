@@ -1,90 +1,123 @@
 import streamlit as st
 from supabase import create_client
+import bcrypt
+import cohere
 from datetime import datetime
-import os
 
-# Variables de entorno (asegúrate de configurarlas en Streamlit Cloud o localmente)
-DB_URL = os.getenv("SUPABASE_URL")
-DB_KEY = os.getenv("SUPABASE_KEY")
-
+# ============================
+# Conexión a Supabase
+# ============================
+DB_URL = st.secrets["DB_URL"]  # "https://xxxx.supabase.co"
+DB_KEY = st.secrets["DB_KEY"]  # anon public key
 supabase = create_client(DB_URL, DB_KEY)
 
-# --- Función de registro ---
-def registrar_usuario(email, password):
-    auth_response = supabase.auth.sign_up({"email": email, "password": password})
-    if auth_response.user:
-        st.session_state.usuario_uid = auth_response.user.id  # Guardar UID
-        st.success("✅ Registro exitoso. Ahora inicia sesión.")
-    else:
-        st.error("❌ No se pudo registrar el usuario.")
+# Conexión a Cohere
+COHERE_KEY = st.secrets["COHERE_KEY"]
+co = cohere.Client(COHERE_KEY)
 
-# --- Función de login ---
-def iniciar_sesion(email, password):
-    auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
-    if auth_response.user:
-        st.session_state.usuario_uid = auth_response.user.id  # Guardar UID
-        st.success("✅ Sesión iniciada.")
-        return True
-    else:
-        st.error("❌ Usuario o contraseña incorrectos.")
+# ============================
+# Funciones de Base de Datos
+# ============================
+def registrar_usuario(username, password):
+    existe = supabase.table("usuarios").select("username").eq("username", username).execute()
+    if existe.data:
+        return False, "El usuario ya existe."
+    
+    hashed_pw = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    supabase.table("usuarios").insert({"username": username, "password": hashed_pw}).execute()
+    return True, "Registro exitoso."
+
+def login_usuario(username, password):
+    user_data = supabase.table("usuarios").select("*").eq("username", username).execute()
+    if not user_data.data:
         return False
+    hashed_pw = user_data.data[0]["password"]
+    return bcrypt.checkpw(password.encode("utf-8"), hashed_pw.encode("utf-8"))
 
-# --- Guardar registro ---
-def guardar_registro(uid, entrada):
-    supabase.table("registros").insert({
-        "usuario": uid,  # Guardar UID real
-        "contenido": entrada
+def guardar_reflexion(username, texto):
+    supabase.table("reflexiones").insert({
+        "username": username,
+        "texto": texto,
+        "fecha": datetime.now().isoformat()
     }).execute()
 
-# --- Obtener registros del usuario ---
-def obtener_registros(uid):
-    data = supabase.table("registros").select("*").eq("usuario", uid).execute()
-    if data.data:
-        return "\n\n".join([r["contenido"] for r in data.data])
-    return "No tienes reflexiones guardadas."
+def obtener_reflexiones(username):
+    data = supabase.table("reflexiones").select("*").eq("username", username).order("fecha", desc=True).execute()
+    return data.data
 
-# --- Interfaz principal ---
-if "usuario_uid" not in st.session_state:
-    st.session_state.usuario_uid = None
+# ============================
+# Manejo de Sesión
+# ============================
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
 
-st.title("🧘 Registro de Conciencia")
+def cerrar_sesion():
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+    st.success("Sesión cerrada.")
 
-if not st.session_state.usuario_uid:
-    menu = st.radio("Selecciona una opción:", ["Iniciar Sesión", "Registrarse"])
-    email = st.text_input("Email")
-    password = st.text_input("Contraseña", type="password")
+# ============================
+# Interfaz Streamlit
+# ============================
+st.title("🧠 Registro de Conciencia")
+
+if not st.session_state.logged_in:
+    menu = st.sidebar.selectbox("Menú", ["Iniciar Sesión", "Registrarse"])
 
     if menu == "Registrarse":
+        st.subheader("Crear cuenta")
+        new_user = st.text_input("Usuario")
+        new_password = st.text_input("Contraseña", type="password")
         if st.button("Registrar"):
-            registrar_usuario(email, password)
+            if new_user and new_password:
+                ok, msg = registrar_usuario(new_user, new_password)
+                st.success(msg) if ok else st.error(msg)
+            else:
+                st.warning("Por favor complete todos los campos.")
 
     elif menu == "Iniciar Sesión":
-        if st.button("Iniciar Sesión"):
-            iniciar_sesion(email, password)
+        st.subheader("Iniciar sesión")
+        username = st.text_input("Usuario")
+        password = st.text_input("Contraseña", type="password")
+        if st.button("Ingresar"):
+            if login_usuario(username, password):
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.success(f"Bienvenido {username}")
+                st.experimental_rerun()
+            else:
+                st.error("Usuario o contraseña incorrectos.")
+
 else:
-    st.markdown("Responde las siguientes preguntas para registrar tu estado y generar una reflexión.")
+    st.sidebar.success(f"Conectado como: {st.session_state.username}")
+    if st.sidebar.button("Cerrar Sesión"):
+        cerrar_sesion()
+        st.experimental_rerun()
 
-    estado_animo = st.text_input("1. ¿Cómo te sientes hoy?")
-    situacion = st.text_input("2. ¿Qué ha estado ocupando tus pensamientos últimamente?")
-    agradecimiento = st.text_input("3. ¿Qué agradeces hoy?")
-    meta = st.text_input("4. ¿Qué te gustaría lograr o mejorar?")
-
-    if st.button("Guardar y reflexionar"):
-        if not any([estado_animo, situacion, agradecimiento, meta]):
-            st.warning("Por favor responde al menos una pregunta.")
+    st.subheader("✨ Generar Reflexión")
+    prompt = st.text_area("Escribe un tema, pensamiento o situación:")
+    if st.button("Generar Reflexión"):
+        if prompt.strip():
+            with st.spinner("Pensando..."):
+                resp = co.generate(
+                    model="command-xlarge-nightly",
+                    prompt=f"Genera una reflexión breve, positiva y profunda sobre: {prompt}",
+                    max_tokens=100,
+                    temperature=0.8
+                )
+                texto_generado = resp.generations[0].text.strip()
+                st.success(texto_generado)
+                guardar_reflexion(st.session_state.username, texto_generado)
         else:
-            fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            entrada = f"""
-Fecha: {fecha}
-Estado de ánimo: {estado_animo}
-Situación actual: {situacion}
-Agradecimiento: {agradecimiento}
-Meta: {meta}
-"""
-            guardar_registro(st.session_state.usuario_uid, entrada)
-            st.success("✅ Entrada guardada.")
+            st.warning("Por favor escribe algo para reflexionar.")
 
-    st.markdown("---")
-    with st.expander("📜 Ver mis reflexiones pasadas"):
-        registros = obtener_registros(st.session_state.usuario_uid)
-        st.text_area("Historial de reflexiones", registros, height=300)
+    st.subheader("📜 Historial de Reflexiones")
+    reflexiones = obtener_reflexiones(st.session_state.username)
+    if reflexiones:
+        for r in reflexiones:
+            st.write(f"**{r['fecha'][:19]}** — {r['texto']}")
+    else:
+        st.info("No has registrado reflexiones aún.")
+
