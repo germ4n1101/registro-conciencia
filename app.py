@@ -1,207 +1,124 @@
 import streamlit as st
 from supabase import create_client
-from werkzeug.security import generate_password_hash, check_password_hash
-import pandas as pd
-import math
-import re
 from datetime import datetime
-import os
+import pandas as pd
 
-st.set_page_config(page_title="Registro de Conciencia (ligero)", layout="centered")
+# --- Configuración de página ---
+st.set_page_config(page_title="Registro de Conciencia", layout="wide")
 
-# -------------------------
-# Cargar secrets / fallback
-# -------------------------
-DB_URL = st.secrets.get("DB_URL") if "DB_URL" in st.secrets else os.getenv("DB_URL")
-api_key = st.secrets.get("api_key") if "api_key" in st.secrets else os.getenv("api_key")
-
-if not DB_URL or not api_key:
-    st.error("⚠️ Falta DB_URL o api_key en secrets (Streamlit Cloud) o variables de entorno.")
+# --- Validar credenciales de Supabase ---
+try:
+    DB_URL = st.secrets["DB_URL"]
+    DB_KEY = st.secrets["DB_KEY"]
+except KeyError as e:
+    st.error(f"❌ Falta la variable {e} en secrets.toml")
     st.stop()
 
-supabase = create_client(DB_URL, api_key)
+if not DB_URL.startswith("https://") or ".supabase.co" not in DB_URL:
+    st.error("❌ La URL de Supabase no es válida. Ejemplo: https://xxxxxx.supabase.co")
+    st.stop()
 
-# -------------------------
-# Utilidades
-# -------------------------
-def email_valido(email: str) -> bool:
-    return re.match(r"[^@]+@[^@]+\.[^@]+", email or "") is not None
+if not DB_KEY or len(DB_KEY) < 40:
+    st.error("❌ La API Key de Supabase no es válida.")
+    st.stop()
 
-def registrar_usuario(username: str, password: str, email: str) -> (bool, str):
-    if not username or not password or not email:
-        return False, "Completa usuario, email y contraseña."
-    if not email_valido(email):
-        return False, "Email inválido."
-    # verificar existencia
-    exists = supabase.table("usuarios").select("id").or_(f"username.eq.{username},email.eq.{email}").execute()
-    if exists.data:
-        return False, "Usuario o email ya registrado."
-    hashed = generate_password_hash(password)
-    resp = supabase.table("usuarios").insert({
-        "username": username,
-        "password": hashed,
-        "email": email
-    }).execute()
-    if resp.error:
-        return False, "Error al registrar (revisa los datos)."
-    return True, "Usuario registrado correctamente."
+try:
+    supabase = create_client(DB_URL, DB_KEY)
+except Exception as e:
+    st.error(f"❌ Error al conectar con Supabase: {e}")
+    st.stop()
 
-def autenticar_usuario(username: str, password: str):
-    if not username or not password:
-        return False, "Rellena usuario y contraseña."
-    res = supabase.table("usuarios").select("*").eq("username", username).execute()
-    if not res.data:
-        return False, "Usuario no encontrado."
-    user = res.data[0]
-    if check_password_hash(user["password"], password):
-        return True, user
-    return False, "Contraseña incorrecta."
+# --- Funciones de autenticación ---
+def registrar_usuario(usuario, clave):
+    data = supabase.table("usuarios").select("*").eq("usuario", usuario).execute()
+    if data.data:
+        return False, "Usuario ya registrado."
+    supabase.table("usuarios").insert({"usuario": usuario, "clave": clave}).execute()
+    return True, "Registro exitoso."
 
-def cambiar_contrasena(email: str, nueva: str) -> (bool, str):
-    if not email_valido(email):
-        return False, "Email inválido."
-    hashed = generate_password_hash(nueva)
-    resp = supabase.table("usuarios").update({"password": hashed}).eq("email", email).execute()
-    if resp.error:
-        return False, "No se pudo actualizar. Verifica el email."
-    if not resp.data:
-        return False, "Email no encontrado."
-    return True, "Contraseña actualizada."
+def login_usuario(usuario, clave):
+    data = supabase.table("usuarios").select("*").eq("usuario", usuario).eq("clave", clave).execute()
+    return bool(data.data)
 
-# Preguntas / CRUD
-def guardar_pregunta(usuario: str, pregunta: str) -> bool:
-    if not pregunta.strip():
-        return False
-    resp = supabase.table("preguntas").insert({
+def guardar_respuesta(usuario, pregunta, respuesta):
+    supabase.table("respuestas").insert({
         "usuario": usuario,
         "pregunta": pregunta,
-        "created_at": datetime.utcnow().isoformat()
+        "respuesta": respuesta,
+        "fecha": datetime.now().isoformat()
     }).execute()
-    return resp.error is None
 
-def obtener_preguntas_usuario(usuario: str) -> pd.DataFrame:
-    res = supabase.table("preguntas").select("*").eq("usuario", usuario).order("created_at", desc=True).execute()
-    data = res.data or []
-    if not data:
-        return pd.DataFrame(columns=["id", "usuario", "pregunta", "created_at"])
-    df = pd.DataFrame(data)
-    # normalizar columnas si vienen con keys diferentes
-    if "created_at" not in df.columns and "createdAt" in df.columns:
-        df = df.rename(columns={"createdAt": "created_at"})
-    return df[["id", "usuario", "pregunta", "created_at"]]
+def obtener_respuestas(usuario):
+    data = supabase.table("respuestas").select("*").eq("usuario", usuario).order("fecha", desc=True).execute()
+    return pd.DataFrame(data.data)
 
-def eliminar_pregunta(id_reg: int) -> bool:
-    resp = supabase.table("preguntas").delete().eq("id", id_reg).execute()
-    return resp.error is None
+# --- Estado de sesión ---
+if "usuario" not in st.session_state:
+    st.session_state.usuario = None
 
-# -------------------------
-# UI: Registro / Login
-# -------------------------
-if "user" not in st.session_state:
-    st.session_state.user = None
+# --- Login o registro ---
+if not st.session_state.usuario:
+    tabs = st.tabs(["🔑 Iniciar Sesión", "🆕 Registrarse"])
 
-st.sidebar.title("Cuenta")
-menu = st.sidebar.radio("Ir a:", ["Login", "Registro", "Recuperar contraseña", "Mi espacio"])
-
-if menu == "Registro":
-    st.header("Crear cuenta")
-    new_user = st.text_input("Usuario", key="reg_user")
-    new_email = st.text_input("Correo electrónico", key="reg_email")
-    new_pass = st.text_input("Contraseña", type="password", key="reg_pass")
-    if st.button("Registrarme"):
-        ok, msg = registrar_usuario(new_user.strip(), new_pass, new_email.strip())
-        if ok:
-            st.success(msg + " — Ahora inicia sesión.")
-        else:
-            st.error(msg)
-
-elif menu == "Login":
-    st.header("Iniciar sesión")
-    user = st.text_input("Usuario", key="login_user")
-    pw = st.text_input("Contraseña", type="password", key="login_pass")
-    if st.button("Ingresar"):
-        ok, res = autenticar_usuario(user.strip(), pw)
-        if ok:
-            st.session_state.user = res
-            st.success(f"Bienvenido {res['username']}")
-        else:
-            st.error(res)
-
-elif menu == "Recuperar contraseña":
-    st.header("Recuperar / cambiar contraseña")
-    email = st.text_input("Ingresa el correo asociado")
-    nueva = st.text_input("Nueva contraseña", type="password")
-    if st.button("Actualizar contraseña"):
-        ok, msg = cambiar_contrasena(email.strip(), nueva)
-        if ok:
-            st.success(msg)
-        else:
-            st.error(msg)
-
-# -------------------------
-# Mi espacio (autenticado)
-# -------------------------
-elif menu == "Mi espacio":
-    if not st.session_state.user:
-        st.warning("Debes iniciar sesión antes de entrar en 'Mi espacio'.")
-    else:
-        usuario = st.session_state.user["username"]
-        st.header(f"Bienvenido, {usuario}")
-
-        # Form: guardar nueva pregunta
-        st.subheader("➕ Nueva pregunta / reflexión")
-        nueva = st.text_area("Escribe tu pregunta o reflexión", height=120, key="nueva_preg")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Guardar"):
-                if guardar_pregunta(usuario, nueva):
-                    st.success("Pregunta guardada ✅")
-                else:
-                    st.error("No se pudo guardar (campo vacío?)")
-        with col2:
-            if st.button("Cerrar sesión"):
-                st.session_state.user = None
+    with tabs[0]:
+        usuario = st.text_input("Usuario", key="login_usuario")
+        clave = st.text_input("Contraseña", type="password", key="login_clave")
+        if st.button("Iniciar sesión"):
+            if login_usuario(usuario, clave):
+                st.session_state.usuario = usuario
+                st.success("✅ Sesión iniciada")
                 st.experimental_rerun()
+            else:
+                st.error("❌ Usuario o contraseña incorrectos.")
 
-        st.markdown("---")
+    with tabs[1]:
+        nuevo_usuario = st.text_input("Nuevo usuario", key="reg_usuario")
+        nueva_clave = st.text_input("Nueva contraseña", type="password", key="reg_clave")
+        if st.button("Registrarse"):
+            ok, msg = registrar_usuario(nuevo_usuario, nueva_clave)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
 
-        # Mostrar historial con búsqueda y paginación (ligero)
-        df = obtener_preguntas_usuario(usuario)
+# --- Pantalla principal ---
+else:
+    st.sidebar.write(f"👋 Bienvenido, **{st.session_state.usuario}**")
+    if st.sidebar.button("Cerrar sesión"):
+        st.session_state.usuario = None
+        st.experimental_rerun()
 
-        if df.empty:
-            st.info("Aún no tienes preguntas guardadas.")
-        else:
-            # Búsqueda global
-            q = st.text_input("🔎 Buscar en mis preguntas")
-            if q:
-                ql = q.lower()
-                df = df[df.apply(lambda r: r.astype(str).str.lower().str.contains(ql).any(), axis=1)]
+    st.title("🧠 Registro de Conciencia")
+    st.write("Responde las preguntas para reflexionar y llevar un historial.")
 
-            # Paginación
-            page_size = st.selectbox("Registros por página", options=[5, 10, 20], index=0)
-            total = len(df)
-            total_pages = max(1, math.ceil(total / page_size))
-            page = st.number_input("Página", min_value=1, max_value=total_pages, value=1, step=1)
+    preguntas = [
+        "¿Qué fue lo mejor que pasó hoy?",
+        "¿Qué aprendiste hoy?",
+        "¿Qué podrías mejorar mañana?"
+    ]
 
-            start = (page - 1) * page_size
-            end = start + page_size
-            mostrar = df.iloc[start:end].reset_index(drop=True)
+    with st.form("form_preguntas"):
+        respuestas = {}
+        for p in preguntas:
+            respuestas[p] = st.text_area(p, "")
+        enviar = st.form_submit_button("Guardar respuestas")
 
-            # Mostrar tabla simple
-            st.write(f"Mostrando {start+1} a {min(end, total)} de {total} registros")
-            st.table(mostrar[["id", "pregunta", "created_at"]].rename(columns={
-                "id": "ID", "pregunta": "Pregunta", "created_at": "Fecha"
-            }))
+        if enviar:
+            for pregunta, respuesta in respuestas.items():
+                if respuesta.strip():
+                    guardar_respuesta(st.session_state.usuario, pregunta, respuesta)
+            st.success("✅ Respuestas guardadas con éxito.")
 
-            # Opciones por fila: eliminar
-            seleccionar = st.number_input("ID para eliminar (vacío si no):", value=0, step=1)
-            if st.button("Eliminar ID seleccionado"):
-                if seleccionar > 0:
-                    if eliminar_pregunta(int(seleccionar)):
-                        st.success("Registro eliminado.")
-                        st.experimental_rerun()
-                    else:
-                        st.error("No se pudo eliminar (ID inválido).")
-                else:
-                    st.warning("Ingresa un ID válido (>0).")
+    st.subheader("📜 Historial de respuestas")
+    df = obtener_respuestas(st.session_state.usuario)
+
+    if not df.empty:
+        busqueda = st.text_input("Buscar en respuestas")
+        if busqueda:
+            df = df[df["respuesta"].str.contains(busqueda, case=False, na=False)]
+
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No hay respuestas registradas aún.")
+
 
