@@ -46,16 +46,20 @@ crear_tablas()
 
 # --- Funciones de autenticación ---
 def registrar_usuario(usuario, clave):
-    data = supabase.table("usuarios").select("*").eq("usuario", usuario).execute()
+    usuario = usuario.strip()
+    clave = clave.strip()
+    data = supabase.table("usuarios").select("*").ilike("usuario", usuario).execute()
     if data.data:
         return False, "Usuario ya registrado."
     supabase.table("usuarios").insert({"usuario": usuario, "clave": clave}).execute()
     return True, "Registro exitoso."
 
 def login_usuario(usuario, clave):
-    data = supabase.table("usuarios").select("*").eq("usuario", usuario).eq("clave", clave).execute()
+    usuario = usuario.strip()
+    clave = clave.strip()
+    data = supabase.table("usuarios").select("*").ilike("usuario", usuario).eq("clave", clave).execute()
     return bool(data.data)
-
+    
 def guardar_respuesta(usuario, pregunta, respuesta):
     supabase.table("respuestas").insert({
         "usuario": usuario,
