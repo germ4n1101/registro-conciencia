@@ -1,141 +1,122 @@
 import streamlit as st
-from supabase import create_client
 from datetime import datetime
-import pandas as pd
+from supabase import create_client
+import cohere
 
-# --- Configuración de página ---
-st.set_page_config(page_title="Registro de Conciencia", layout="wide")
+# --- Configuración ---
+DB_URL = "TU_SUPABASE_URL"
+DB_KEY = "TU_SUPABASE_KEY"
+COHERE_KEY = "TU_API_KEY_COHERE"
 
-# --- Validar credenciales de Supabase ---
-try:
-    DB_URL = st.secrets["DB_URL"]
-    DB_KEY = st.secrets["DB_KEY"]
-except KeyError as e:
-    st.error(f"❌ Falta la variable {e} en secrets.toml")
-    st.stop()
-
-if not DB_URL.startswith("https://") or ".supabase.co" not in DB_URL:
-    st.error("❌ La URL de Supabase no es válida. Ejemplo: https://xxxxxx.supabase.co")
-    st.stop()
-
-if not DB_KEY or len(DB_KEY) < 40:
-    st.error("❌ La API Key de Supabase no es válida.")
-    st.stop()
-
-try:
-    supabase = create_client(DB_URL, DB_KEY)
-except Exception as e:
-    st.error(f"❌ Error al conectar con Supabase: {e}")
-    st.stop()
-
-# --- Crear tablas si no existen ---
-def crear_tablas():
-    try:
-        # Tabla de usuarios
-        supabase.table("usuarios").select("*").limit(1).execute()
-    except:
-        st.warning("⚠ La tabla 'usuarios' no existe. Debes crearla en Supabase con columnas: usuario (text), clave (text).")
-
-    try:
-        # Tabla de respuestas
-        supabase.table("respuestas").select("*").limit(1).execute()
-    except:
-        st.warning("⚠ La tabla 'respuestas' no existe. Debes crearla en Supabase con columnas: usuario (text), pregunta (text), respuesta (text), fecha (timestamp).")
-
-crear_tablas()
+supabase = create_client(DB_URL, DB_KEY)
+co = cohere.Client(COHERE_KEY)
 
 # --- Funciones de autenticación ---
 def registrar_usuario(usuario, clave):
-    usuario = usuario.strip()
-    clave = clave.strip()
-    data = supabase.table("usuarios").select("*").ilike("usuario", usuario).execute()
-    if data.data:
-        return False, "Usuario ya registrado."
+    existe = supabase.table("usuarios").select("*").eq("usuario", usuario).execute()
+    if existe.data:
+        return False, "❌ Usuario ya existe."
     supabase.table("usuarios").insert({"usuario": usuario, "clave": clave}).execute()
-    return True, "Registro exitoso."
+    return True, "✅ Usuario registrado con éxito."
 
-def login_usuario(usuario, clave):
-    usuario = usuario.strip()
-    clave = clave.strip()
-    data = supabase.table("usuarios").select("*").ilike("usuario", usuario).eq("clave", clave).execute()
-    return bool(data.data)
-    
-def guardar_respuesta(usuario, pregunta, respuesta):
-    supabase.table("respuestas").insert({
-        "usuario": usuario,
-        "pregunta": pregunta,
-        "respuesta": respuesta,
-        "fecha": datetime.now().isoformat()
-    }).execute()
+def autenticar_usuario(usuario, clave):
+    data = supabase.table("usuarios").select("*").eq("usuario", usuario).eq("clave", clave).execute()
+    return len(data.data) > 0
 
-def obtener_respuestas(usuario):
-    data = supabase.table("respuestas").select("*").eq("usuario", usuario).order("fecha", desc=True).execute()
-    return pd.DataFrame(data.data)
+# --- Funciones de registros ---
+def guardar_registro(usuario, entrada):
+    supabase.table("registros").insert({"usuario": usuario, "entrada": entrada}).execute()
 
-# --- Estado de sesión ---
-if "usuario" not in st.session_state:
-    st.session_state.usuario = None
+def obtener_registros(usuario):
+    data = supabase.table("registros").select("entrada").eq("usuario", usuario).order("id", desc=True).execute()
+    return "\n\n".join([r["entrada"] for r in data.data])
 
-# --- Login o registro ---
-if not st.session_state.usuario:
-    tabs = st.tabs(["🔑 Iniciar Sesión", "🆕 Registrarse"])
+def generar_reflexion(prompt):
+    respuesta = co.generate(
+        model="command-xlarge-nightly",
+        prompt=prompt,
+        max_tokens=150,
+        temperature=0.7
+    )
+    return respuesta.generations[0].text.strip()
+
+# --- Interfaz ---
+st.set_page_config(page_title="Registro de Conciencia", page_icon="🧘")
+
+if "usuario_autenticado" not in st.session_state:
+    st.session_state.usuario_autenticado = None
+
+if st.session_state.usuario_autenticado is None:
+    tabs = st.tabs(["Iniciar Sesión", "Registrarse"])
 
     with tabs[0]:
-        usuario = st.text_input("Usuario", key="login_usuario")
-        clave = st.text_input("Contraseña", type="password", key="login_clave")
-        if st.button("Iniciar sesión"):
-            if login_usuario(usuario, clave):
-                st.session_state.usuario = usuario
-                st.success("✅ Sesión iniciada")
-                st.rerun()
+        st.subheader("🔐 Iniciar Sesión")
+        usuario = st.text_input("Usuario")
+        clave = st.text_input("Contraseña", type="password")
+        if st.button("Ingresar"):
+            if autenticar_usuario(usuario, clave):
+                st.session_state.usuario_autenticado = usuario
+                st.success("✅ Sesión iniciada.")
+                st.experimental_rerun()
             else:
                 st.error("❌ Usuario o contraseña incorrectos.")
 
     with tabs[1]:
-        nuevo_usuario = st.text_input("Nuevo usuario", key="reg_usuario")
-        nueva_clave = st.text_input("Nueva contraseña", type="password", key="reg_clave")
-        if st.button("Registrarse"):
-            ok, msg = registrar_usuario(nuevo_usuario, nueva_clave)
+        st.subheader("🆕 Registrarse")
+        usuario = st.text_input("Nuevo usuario")
+        clave = st.text_input("Nueva contraseña", type="password")
+        if st.button("Registrar"):
+            ok, msg = registrar_usuario(usuario, clave)
             if ok:
                 st.success(msg)
             else:
                 st.error(msg)
 
-# --- Pantalla principal ---
 else:
-    st.sidebar.write(f"👋 Bienvenido, **{st.session_state.usuario}**")
-    if st.sidebar.button("Cerrar sesión"):
-        st.session_state.usuario = None
-        st.rerun()
+    # --- Registro de Conciencia ---
+    st.title("🧘 Registro de Conciencia")
+    st.markdown("Responde las siguientes preguntas para registrar tu estado y generar una reflexión.")
 
-    st.title("🧠 Registro de Conciencia")
-    st.write("Responde las preguntas para reflexionar y llevar un historial.")
+    estado_animo = st.text_input("1. ¿Cómo te sientes hoy?")
+    situacion = st.text_input("2. ¿Qué ha estado ocupando tus pensamientos últimamente?")
+    agradecimiento = st.text_input("3. ¿Qué agradeces hoy?")
+    meta = st.text_input("4. ¿Qué te gustaría lograr o mejorar?")
 
-    preguntas = [
-        "¿Qué fue lo mejor que pasó hoy?",
-        "¿Qué aprendiste hoy?",
-        "¿Qué podrías mejorar mañana?"
-    ]
+    if st.button("Guardar y reflexionar"):
+        if not any([estado_animo, situacion, agradecimiento, meta]):
+            st.warning("Por favor responde al menos una pregunta.")
+        else:
+            fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            entrada = f"""
+Fecha: {fecha}
+Estado de ánimo: {estado_animo}
+Situación actual: {situacion}
+Agradecimiento: {agradecimiento}
+Meta: {meta}
+"""
+            guardar_registro(st.session_state.usuario_autenticado, entrada)
+            st.success("✅ Entrada guardada y analizada por la IA.")
 
-    with st.form("form_preguntas"):
-        respuestas = {}
-        for p in preguntas:
-            respuestas[p] = st.text_area(p, "")
-        enviar = st.form_submit_button("Guardar respuestas")
+            prompt_ia = (
+                f"Soy una persona reflexiva. Hoy escribí:\n\n"
+                f"Estado de ánimo: {estado_animo}\n"
+                f"Situación actual: {situacion}\n"
+                f"Agradecimiento: {agradecimiento}\n"
+                f"Meta: {meta}\n\n"
+                f"Por favor genera una reflexión amable, positiva y consciente basada en esta información."
+            )
 
-        if enviar:
-            for pregunta, respuesta in respuestas.items():
-                if respuesta.strip():
-                    guardar_respuesta(st.session_state.usuario, pregunta, respuesta)
-            st.success("✅ Respuestas guardadas con éxito.")
+            reflexion = generar_reflexion(prompt_ia)
+            st.subheader("🧠 Reflexión para ti")
+            st.write(reflexion)
 
-    st.subheader("📜 Historial de respuestas")
-    df = obtener_respuestas(st.session_state.usuario)
+    # --- Mostrar reflexiones pasadas ---
+    st.markdown("---")
+    with st.expander("📜 Ver mis reflexiones pasadas"):
+        registros = obtener_registros(st.session_state.usuario_autenticado)
+        st.text_area("Historial de reflexiones", registros, height=300)
 
-    if not df.empty:
-        busqueda = st.text_input("Buscar en respuestas")
-        if busqueda:
-            df = df[df["respuesta"].str.contains(busqueda, case=False, na=False)]
-        st.dataframe(df, use_container_width=True, hide_index=True)
-    else:
-        st.info("No hay respuestas registradas aún.")
+    if st.button("Cerrar sesión"):
+        st.session_state.usuario_autenticado = None
+        st.experimental_rerun()
+
